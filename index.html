@@ -35,6 +35,8 @@ a{color:var(--gold)}
 .text-nav select,.text-nav button{font:inherit;font-size:.88rem;padding:.25rem .45rem;
   border:1px solid var(--bronze);border-radius:6px;background:var(--card);color:var(--ink)}
 .text-nav button:disabled,.text-nav select:disabled{opacity:.45}
+.text-nav .pos{color:var(--slate);margin:0 auto}
+.text-nav a.btn{text-decoration:none}
 main{max-width:1020px;margin:0 auto;padding:1.2rem 1rem 3rem}
 h1,h2,h3{font-family:"Frank Ruhl Libre",serif}
 .hero{text-align:center;padding:2.2rem 0 1rem}
@@ -589,7 +591,7 @@ function liveReadHtml(v){
     const eff = effective(w, "read");
     const shown = (eff === null) ? g.text : (eff === "" ? "" : (eff !== w.kjv ? eff : g.text));
     if(shown === "") continue;
-    parts.push(w.s ? `<a href="#/word/${esc(w.s)}">${esc(shown)}</a>` : esc(shown));
+    parts.push(w.s ? `<a href="#/word/${esc(w.s)}/${v.book}/${v.ch}/${v.n}/${g.pos}">${esc(shown)}</a>` : esc(shown));
   }
   return parts.join(" ");
 }
@@ -603,14 +605,15 @@ function readHtml(v){
   }).join("");
   if(!v.words || !v.words.length || !v.kjvText) return esc(v.kjvText||"");
   let rest = v.kjvText, html = "";
-  for(const w of v.words){
+  for(let i=0; i<v.words.length; i++){
+    const w = v.words[i];
     if(!w.kp) continue;
     const idx = rest.indexOf(w.kp);
     if(idx<0) continue;
     html += esc(rest.slice(0, idx));
     const eff = effective(w, "read");
     const shown = eff===null ? w.kp : eff;
-    html += w.s ? `<a href="#/word/${w.s}">${esc(shown)}</a>` : esc(shown);
+    html += w.s ? `<a href="#/word/${w.s}/1/1/${v.n}/${i+1}">${esc(shown)}</a>` : esc(shown);
     rest = rest.slice(idx + w.kp.length);
   }
   return html + esc(rest);
@@ -722,8 +725,45 @@ async function viewRead(){
   <div class="read-text">${paras}</div>
   <p class="note">Every word or phrase links to its Hebrew card, where a “See also” list shows where the same word is also used. Your rendering choices apply here too — Read defaults: your choice, then King James.</p>`};
 }
+/* Word-card links may carry the verse they were tapped in:
+   #/word/<Strongs>/<book>/<chapter>/<verse>/<wordPos>. The context powers
+   a prev/next-word strip on the card; without it the card is unchanged. */
+function parseWordSlug(slug){
+  const parts = String(slug).split("/");
+  let s = parts[0];
+  if(s==="elohim") s = "H430";
+  let ctx = null;
+  if(parts.length >= 5){
+    const nums = parts.slice(1, 5).map(Number);
+    if(nums.every(Number.isFinite)) ctx = {b: nums[0], c: nums[1], v: nums[2], pos: nums[3]};
+  }
+  return {s, ctx};
+}
+/* Nearest words with a Strong's number on either side of pos (1-based);
+   Strong's-less words are skipped. */
+function wordNeighbors(words, pos){
+  let prev = null, next = null;
+  for(let i=pos-2; i>=0; i--)
+    if(words[i] && words[i].s){ prev = {s: words[i].s, pos: i+1}; break; }
+  for(let i=pos; i<words.length; i++)
+    if(words[i] && words[i].s){ next = {s: words[i].s, pos: i+1}; break; }
+  return {prev, next};
+}
+function wordNavStrip(ctx, words){
+  const {prev, next} = wordNeighbors(words, ctx.pos);
+  const href = nb => `#/word/${esc(nb.s)}/${ctx.b}/${ctx.c}/${ctx.v}/${nb.pos}`;
+  const prevHtml = prev
+    ? `<a class="btn" href="${href(prev)}">‹ Prev word</a>`
+    : `<span class="btn" style="opacity:.45">‹ Prev word</span>`;
+  const nextHtml = next
+    ? `<a class="btn" href="${href(next)}">Next word ›</a>`
+    : `<span class="btn" style="opacity:.45">Next word ›</span>`;
+  return `<div class="text-nav">${prevHtml}
+    <span class="pos"><a href="#/interlinear" data-b="${ctx.b}" data-c="${ctx.c}" data-v="${ctx.v}" data-to="study">${esc(bookName(ctx.b))} ${ctx.c}:${ctx.v}</a> · word ${ctx.pos} of ${words.length}</span>
+    ${nextHtml}</div>`;
+}
 async function viewWordPage(slug){
-  const s = slug==="elohim" ? "H430" : slug;
+  const {s, ctx} = parseWordSlug(slug);
   const r = await getWordPage(s);
   if(r.notFound) return {sample:false, nav:"", html: errorBlock(`No word with Strong's number ${s} is in the database.`)};
   const w = r.data;
@@ -737,7 +777,14 @@ async function viewWordPage(slug){
   const occ = w.occ.map(o => o.verse!=null
     ? `<li><a href="#/interlinear" data-b="${o.book_id||1}" data-c="${o.chapter||1}" data-v="${o.verse}" data-to="${o.to||"study"}">${esc(o.ref)}</a></li>`
     : `<li>${esc(o.ref)}</li>`).join("");
-  return {sample:r.sample, nav:"", html: bannerFor(r.sample) + `<div class="wordpage">
+  let strip = "";
+  if(ctx){
+    const vr = await getVerse(ctx.b, ctx.c, ctx.v);
+    const verse = (vr && vr.data && vr.data.live) ? vr.data : null;
+    if(verse && verse.words[ctx.pos-1] && verse.words[ctx.pos-1].s === s)
+      strip = wordNavStrip(ctx, verse.words);
+  }
+  return {sample:r.sample, nav:"", html: bannerFor(r.sample) + strip + `<div class="wordpage">
     <div class="wcard">
       <div class="heb-big" lang="he">${esc(w.h)}</div>
       <div class="meta"><span class="tr">${esc(w.t||"")}</span><span class="snum">${esc(s)}</span></div>
