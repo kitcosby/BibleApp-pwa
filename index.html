@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Build Your Own Translation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --parchment:#FFFCF0; --papyrus:#E8D5A3; --bronze:#B89B5E; --gold:#8C6D2F;
+  --ink:#2B2118; --slate:#5D6D7E; --card:#FFFDF6; --line:#D9C48D;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--parchment);color:var(--ink);
+  font-family:Inter,system-ui,sans-serif;font-size:16px;line-height:1.45}
+a{color:var(--gold)}
+.site-nav{position:sticky;top:0;z-index:50;background:var(--ink);color:var(--parchment);
+  display:flex;align-items:center;gap:1rem;padding:.55rem 1rem;flex-wrap:wrap}
+.site-nav .brand{font-family:"Frank Ruhl Libre",serif;font-weight:700;font-size:1.05rem;color:var(--parchment);text-decoration:none}
+.site-nav nav{display:flex;gap:.9rem;margin-left:auto}
+.site-nav nav a{color:var(--papyrus);text-decoration:none;font-size:.92rem}
+.site-nav nav a:hover{color:#fff;text-decoration:underline}
+.text-nav{position:sticky;top:45px;z-index:40;background:var(--papyrus);
+  border-bottom:1px solid var(--bronze);display:flex;gap:.5rem;align-items:center;
+  padding:.4rem 1rem;flex-wrap:wrap;font-size:.9rem}
+.text-nav select,.text-nav button{font:inherit;font-size:.88rem;padding:.25rem .45rem;
+  border:1px solid var(--bronze);border-radius:6px;background:var(--card);color:var(--ink)}
+.text-nav button:disabled,.text-nav select:disabled{opacity:.45}
+main{max-width:1020px;margin:0 auto;padding:1.2rem 1rem 3rem}
+h1,h2,h3{font-family:"Frank Ruhl Libre",serif}
+.hero{text-align:center;padding:2.2rem 0 1rem}
+.hero h1{font-size:2.2rem;margin:.2rem 0}
+.hero p{color:var(--slate);max-width:560px;margin:.4rem auto}
+.doors{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1.4rem 0}
+@media(max-width:640px){.doors{grid-template-columns:1fr}}
+.door{display:block;background:var(--card);border:1px solid var(--bronze);border-radius:14px;
+  padding:1.4rem;text-decoration:none;color:var(--ink);box-shadow:0 1px 3px rgba(43,33,24,.08)}
+.door:hover{border-color:var(--gold)}
+.door .heb{font-family:"Frank Ruhl Libre",serif;font-size:2.4rem;color:var(--gold);direction:rtl}
+.door h2{margin:.3rem 0}
+.door p{color:var(--slate);margin:.2rem 0}
+.searchbar{display:flex;gap:.5rem;max-width:560px;margin:1rem auto}
+.searchbar input{flex:1;padding:.7rem 1rem;border:1px solid var(--bronze);border-radius:999px;
+  font:inherit;background:#fff}
+.searchbar button,.btn{padding:.7rem 1.3rem;border:none;border-radius:999px;background:var(--gold);
+  color:#fff;font:inherit;font-weight:600;cursor:pointer}
+.verse-sec{margin:2rem 0;border-top:2px solid var(--line);padding-top:1rem}
+.verse-head{display:flex;align-items:baseline;gap:.8rem}
+.verse-num{font-family:"Frank Ruhl Libre",serif;font-size:2rem;color:var(--gold);font-weight:700}
+.verse-head h2{margin:0;font-size:1.25rem}
+.jump-row{display:flex;gap:.5rem;margin:.6rem 0 0}
+.jump-row button{font:inherit;font-size:.85rem;padding:.3rem .8rem;border:1px solid var(--bronze);
+  background:var(--card);border-radius:999px;cursor:pointer}
+.word-row{display:flex;flex-wrap:wrap;gap:.7rem;direction:rtl;margin:1rem 0}
+.word-card{direction:rtl;width:172px;background:var(--card);border:1px solid var(--bronze);
+  border-radius:12px;padding:.7rem;display:flex;flex-direction:column;gap:.3rem}
+.word-card .heb{font-family:"Frank Ruhl Libre",serif;font-size:1.55rem;line-height:1.2}
+.word-card .tr{font-size:.82rem;color:var(--slate);direction:ltr;text-align:left}
+.word-card .gloss{font-weight:600;direction:ltr;text-align:left}
+.word-card .grammar{font-size:.76rem;color:var(--slate);direction:ltr;text-align:left}
+.word-card label{font-size:.72rem;color:var(--slate);direction:ltr;text-align:left}
+.word-card select,.word-card input[type=text]{width:100%;font:inherit;font-size:.85rem;
+  padding:.3rem;border:1px solid var(--line);border-radius:6px;background:#fff;direction:ltr}
+.sentence{background:#fff;border:1px solid var(--line);border-left:4px solid var(--gold);
+  border-radius:8px;padding:.8rem 1rem;font-family:"Frank Ruhl Libre",serif;font-size:1.12rem}
+.sentence .cap{font-family:Inter,sans-serif;font-size:.75rem;color:var(--slate);
+  text-transform:uppercase;letter-spacing:.06em}
+.witness{margin-top:1rem}
+.witness h3{font-size:1rem;margin:.4rem 0}
+.wnote{display:flex;gap:.6rem;align-items:baseline;background:#F4EDD8;border:1px solid var(--line);
+  border-radius:8px;padding:.5rem .8rem;margin:.4rem 0;font-size:.93rem}
+.chip{background:var(--slate);color:#fff;border-radius:999px;padding:.1rem .6rem;
+  font-size:.75rem;font-weight:600;white-space:nowrap}
+.splash{background:var(--card);border:1px solid var(--bronze);border-radius:14px;padding:1.2rem;margin-bottom:1.6rem}
+.splash .anchors{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem}
+.splash select{font:inherit;padding:.35rem;border:1px solid var(--bronze);border-radius:6px;background:#fff}
+.book-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:.4rem}
+.book-grid a,.book-grid span{padding:.35rem .5rem;border-radius:6px;font-size:.92rem}
+.book-grid a{background:#F4EDD8;text-decoration:none}
+.book-grid span{color:var(--slate)}
+.tag{font-size:.7rem;background:var(--papyrus);border-radius:999px;padding:.05rem .45rem;margin-left:.3rem}
+.read-text{font-family:"Frank Ruhl Libre",serif;font-size:1.22rem;line-height:1.75}
+.read-text p{margin:.7rem 0}
+.read-text .vn{color:var(--gold);font-weight:700;font-size:.95rem;vertical-align:super;margin-right:.2rem}
+.read-text a{color:var(--gold);text-decoration:none;border-bottom:1px dotted var(--gold)}
+.read-text a:hover{text-decoration:underline}
+.note{color:var(--slate);font-size:.9rem}
+.results{max-width:680px;margin:1.4rem auto;text-align:left}
+.result{padding:.8rem 0;border-bottom:1px solid var(--line)}
+.result .ref{color:var(--gold);font-weight:600}
+.result .txt{font-family:"Frank Ruhl Libre",serif;font-size:1.08rem}
+.result .score{color:var(--slate);font-size:.85rem}
+.wordpage .heb-big{font-family:"Frank Ruhl Libre",serif;font-size:3rem;direction:rtl;text-align:right}
+.frame-foot{display:flex;justify-content:space-between;align-items:center;gap:.6rem;margin-top:1.4rem;flex-wrap:wrap}
+.frame-foot .pos{color:var(--slate);font-size:.9rem}
+.frame-foot button:disabled{opacity:.45}
+.toc{margin-top:1.6rem}
+.seealso li{margin:.25rem 0}
+.wcard{background:var(--card);border:1px solid var(--bronze);border-radius:14px;
+  padding:1.1rem 1.2rem;box-shadow:0 1px 3px rgba(43,33,24,.08)}
+.wcard .heb-big{font-family:"Frank Ruhl Libre",serif;font-size:2.9rem;line-height:1.15;
+  direction:rtl;text-align:right;color:var(--ink)}
+.wcard .meta{display:flex;flex-wrap:wrap;gap:.4rem .9rem;align-items:baseline;margin-top:.3rem}
+.wcard .meta .tr{font-size:1.15rem;font-weight:600}
+.wcard .meta .snum{color:var(--gold);font-weight:600}
+.wcard .glossline{font-size:1.05rem;margin-top:.2rem}
+.wcard .grammar{color:var(--slate);font-size:.9rem;margin-top:.15rem}
+.wcard .controls{border-top:1px solid var(--line);margin-top:.9rem;padding-top:.8rem;
+  display:flex;gap:.6rem;align-items:center;flex-wrap:wrap}
+.wcard .controls label{font-size:.8rem;color:var(--slate);text-transform:uppercase;letter-spacing:.05em}
+.wcard .controls select,.wcard .controls input[type=text]{font:inherit;font-size:.92rem;
+  padding:.35rem;border:1px solid var(--line);border-radius:6px;background:#fff}
+.panel{border:1px solid var(--line);border-radius:12px;padding:.9rem 1.1rem;margin-top:1rem;background:#fff}
+.panel h3{margin:.1rem 0 .5rem;font-size:1.02rem}
+.panel p{margin:.2rem 0}
+.rchips{display:flex;flex-wrap:wrap;gap:.35rem}
+.rchip{background:#F4EDD8;border:1px solid var(--line);border-radius:999px;padding:.15rem .7rem;font-size:.92rem}
+.rlab{font-size:.75rem;color:var(--slate);text-transform:uppercase;letter-spacing:.06em;margin:.5rem 0 .3rem}
+select.inline{font:inherit;padding:.35rem;border:1px solid var(--bronze);border-radius:6px;background:#fff}
+input.custom-in{font:inherit;padding:.35rem .6rem;border:1px solid var(--bronze);border-radius:6px}
+footer{color:var(--slate);font-size:.82rem;text-align:center;padding:1.5rem 1rem;border-top:1px solid var(--line)}
+</style>
+</head>
+<body>
+<header class="site-nav">
+  <a class="brand" href="#/">Build Your Own Translation</a>
+  <nav>
+    <a href="#/">Home</a><a href="#/interlinear">Study</a>
+    <a href="#/read">Read</a><a href="#/search">Search</a>
+  </nav>
+</header>
+<div id="textnav"></div>
+<main id="view"></main>
+<footer>Prototype — sample data: Genesis 1. Young's renderings are computed alignments, labeled as such. Live semantic search arrives with the Lampy data path.</footer>
+
+<script>
+"use strict";
+/* ============ DATA MODULE (the single corpus source) ============
+   All corpus content lives here as typed constants. A full corpus
+   export replaces this block without touching the UI code.
+   Word:      {h,t,s,g,gr,kjv,ylt,yp,kp}  hebrew, transliteration, strongs,
+              gloss, grammar, kjv rendering, youngs rendering,
+              yp = its phrase inside the Young's verse text (or null),
+              kp = its phrase inside the KJV verse text (or null)
+   Verse:     {n, kjvText, youngsText, words:[Word], notes:[WitnessNote]}
+   WitnessNote:{witness, text}
+   SearchResult:{ref, text, score} — the contract for the project's own
+              search engine: semantic search over the Bible database's
+              verse embeddings (nomic-embed-text, 768-dim) served by the
+              project API later; the bundled samples implement the same
+              shape so the live endpoint swaps in with no UI change.   */
+const CORPUS = {
+  verses: [
+    { n:1,
+      kjvText:"In the beginning God created the heavens and the earth.",
+      youngsText:"In the beginning of God's preparing the heavens and the earth —",
+      notes:[
+        {witness:"SP", text:"Samaritan Pentateuch: no variant in this verse."},
+        {witness:"Syr", text:"Peshitta verse text available for this verse — tap to compare at verse scale."}],
+      words:[
+        {h:"בְּרֵאשִׁית",t:"bereshit",s:"H7225",g:"in beginning",gr:"preposition + noun · feminine · singular · construct",kjv:"In the beginning",ylt:"In the beginning",yp:"In the beginning",kp:"In the beginning"},
+        {h:"בָּרָא",t:"bara",s:"H1254",g:"created",gr:"verb · Qal perfect · 3rd masculine singular",kjv:"created",ylt:"preparing",yp:"preparing",kp:"created"},
+        {h:"אֱלֹהִים",t:"Elohim",s:"H430",g:"God",gr:"noun · masculine · plural · absolute",kjv:"God",ylt:"God",yp:"God",kp:"God"},
+        {h:"אֵת",t:"et",s:"H853",g:"(object marker)",gr:"direct object marker",kjv:"(untranslated)",ylt:"(untranslated)",yp:null,kp:null},
+        {h:"הַשָּׁמַיִם",t:"hashamayim",s:"H8064",g:"the heavens",gr:"definite article + noun · masculine · plural · absolute",kjv:"the heavens",ylt:"the heavens",yp:"the heavens",kp:"the heavens"},
+        {h:"וְאֵת",t:"ve'et",s:"H853",g:"and + (object marker)",gr:"conjunction + direct object marker",kjv:"and",ylt:"and",yp:"and",kp:"and"},
+        {h:"הָאָרֶץ",t:"ha'aretz",s:"H776",g:"the earth",gr:"definite article + noun · singular · absolute",kjv:"the earth",ylt:"the earth",yp:"the earth",kp:"the earth"}
+      ]},
+    { n:2,
+      kjvText:"And the earth was without form, and void; and darkness was upon the face of the deep. And the Spirit of God moved upon the face of the waters.",
+      youngsText:"the earth hath existed waste and void, and darkness [is] on the face of the deep, and the Spirit of God fluttering on the face of the waters,",
+      notes:[],
+      words:[
+        {h:"וְהָאָרֶץ",t:"veha'aretz",s:"H776",g:"and the earth",gr:"conjunction + article + noun · singular · absolute",kjv:"And the earth",ylt:"the earth",yp:"the earth",kp:"And the earth"},
+        {h:"הָיְתָה",t:"hayetah",s:"H1961",g:"was",gr:"verb · Qal perfect · 3rd feminine singular",kjv:"was",ylt:"hath existed",yp:"hath existed",kp:"was"},
+        {h:"תֹהוּ",t:"tohu",s:"H8414",g:"waste, formlessness",gr:"noun · masculine · singular · absolute",kjv:"without form",ylt:"waste",yp:"waste",kp:"without form"},
+        {h:"וָבֹהוּ",t:"vavohu",s:"H922",g:"and emptiness",gr:"conjunction + noun · masculine · singular · absolute",kjv:"and void",ylt:"and void",yp:"and void",kp:"and void"},
+        {h:"וְחֹשֶׁךְ",t:"vechoshekh",s:"H2822",g:"and darkness",gr:"conjunction + noun · masculine · singular · absolute",kjv:"and darkness",ylt:"and darkness",yp:"and darkness",kp:"and darkness"},
+        {h:"עַל־פְּנֵי",t:"al-penei",s:"H6440",g:"upon the face of",gr:"noun · plural · construct",kjv:"upon the face of",ylt:"on the face of",yp:"on the face of",kp:"upon the face of"},
+        {h:"תְהוֹם",t:"tehom",s:"H8415",g:"the deep",gr:"noun · singular · absolute",kjv:"the deep",ylt:"the deep",yp:"the deep",kp:"the deep"},
+        {h:"וְרוּחַ",t:"veruach",s:"H7307",g:"and the Spirit",gr:"conjunction + noun · singular · construct",kjv:"And the Spirit",ylt:"and the Spirit",yp:"the Spirit",kp:"And the Spirit"},
+        {h:"אֱלֹהִים",t:"Elohim",s:"H430",g:"God",gr:"noun · masculine · plural · absolute",kjv:"God",ylt:"God",yp:"God",kp:"God"},
+        {h:"מְרַחֶפֶת",t:"merachefet",s:"H7363",g:"hovering",gr:"verb · Piel participle · feminine singular",kjv:"moved",ylt:"fluttering",yp:"fluttering",kp:"moved"},
+        {h:"עַל־פְּנֵי",t:"al-penei",s:"H6440",g:"upon the face of",gr:"noun · plural · construct",kjv:"upon the face of",ylt:"on the face of",yp:"on the face of",kp:"upon the face of"},
+        {h:"הַמָּיִם",t:"hamayim",s:"H4325",g:"the waters",gr:"definite article + noun · masculine · plural · absolute",kjv:"the waters",ylt:"the waters",yp:"the waters",kp:"the waters"}
+      ]},
+    { n:3,
+      kjvText:"And God said, Let there be light: and there was light.",
+      youngsText:"and God saith, 'Let light be;' and light is.",
+      notes:[],
+      words:[
+        {h:"וַיֹּאמֶר",t:"vayomer",s:"H559",g:"and he said",gr:"conjunction + verb · Qal wayyiqtol · 3rd masculine singular",kjv:"said",ylt:"saith",yp:"saith",kp:"said"},
+        {h:"אֱלֹהִים",t:"Elohim",s:"H430",g:"God",gr:"noun · masculine · plural · absolute",kjv:"God",ylt:"God",yp:"God",kp:"God"},
+        {h:"יְהִי",t:"yehi",s:"H1961",g:"let there be",gr:"verb · Qal jussive · 3rd masculine singular",kjv:"Let there be",ylt:"Let be",yp:"Let light be",kp:"Let there be"},
+        {h:"אוֹר",t:"'or",s:"H216",g:"light",gr:"noun · singular · absolute",kjv:"light",ylt:"light",yp:"light",kp:"light"},
+        {h:"וַיְהִי־אוֹר",t:"vayehi-'or",s:"H216",g:"and there was light",gr:"combined graphic word: verb Qal wayyiqtol 3rd masc. sg. + noun \"light\"",kjv:"and there was light",ylt:"and light is",yp:"and light is",kp:"and there was light"}
+      ]}
+  ],
+  readExtra: [
+    { n:4, segs:[
+      {x:"And "},{x:"God",href:"#/word/elohim",s:"H430"},{x:" saw "},{x:"the "},
+      {x:"light",href:"#/interlinear",scroll:"card-H216-3-3",s:"H216"},
+      {x:", that it was good: and "},{x:"God",href:"#/word/elohim",s:"H430"},
+      {x:" divided "},{x:"the "},
+      {x:"light",href:"#/interlinear",scroll:"card-H216-3-3",s:"H216"},
+      {x:" from the "},
+      {x:"darkness",href:"#/interlinear",scroll:"card-H2822-2-4",s:"H2822"},{x:"."}]},
+    { n:5, segs:[
+      {x:"And "},{x:"God",href:"#/word/elohim",s:"H430"},{x:" called "},{x:"the "},
+      {x:"light",href:"#/interlinear",scroll:"card-H216-3-3",s:"H216"},
+      {x:" Day, and the "},
+      {x:"darkness",href:"#/interlinear",scroll:"card-H2822-2-4",s:"H2822"},
+      {x:" he called Night. And the evening and the morning were the first day."}]}
+  ],
+  wordPages: {
+    elohim: { h:"אֱלֹהִים", t:"Elohim", s:"H430", pos:"noun masculine plural",
+      kjvList:["God","god","gods","judges","angels"], yltList:["God","gods"],
+      notes:[{witness:"1QIsa-a", text:"Addition: אוֹר 'light' after יִרְאֶה — Dead Sea Scrolls, Isaiah 53:11."}],
+      occurrences:[{ref:"Genesis 1:1",verse:1},{ref:"Genesis 1:2",verse:2},
+        {ref:"Genesis 1:3",verse:3},{ref:"Genesis 1:4",read:4},
+        {ref:"Genesis 1:5",read:5},{ref:"Genesis 1:6",verse:null}] }
+  },
+  books: ["Genesis","Exodus","Leviticus","Numbers","Deuteronomy","Joshua","Judges","Ruth",
+    "1 Samuel","2 Samuel","1 Kings","2 Kings","1 Chronicles","2 Chronicles","Ezra","Nehemiah",
+    "Esther","Job","Psalms","Proverbs","Ecclesiastes","Song of Songs","Isaiah","Jeremiah",
+    "Lamentations","Ezekiel","Daniel","Hosea","Joel","Amos","Obadiah","Jonah","Micah","Nahum",
+    "Habakkuk","Zephaniah","Haggai","Zechariah","Malachi"],
+  searchSamples: [
+    {ref:"Genesis 1:3", text:"And God said, Let there be light: and there was light.", score:0.91},
+    {ref:"Psalm 27:1", text:"The LORD is my light and my salvation; whom shall I fear?", score:0.86},
+    {ref:"Isaiah 9:2", text:"The people that walked in darkness have seen a great light…", score:0.84},
+    {ref:"Isaiah 60:1", text:"Arise, shine; for thy light is come…", score:0.81}
+  ]
+};
+
+/* ============ CHOICES STORE (shared, keyed by Strong's) ============ */
+const store = {
+  mem: {},
+  load(){ try{ this.mem = JSON.parse(localStorage.getItem("byotChoices")||"{}"); }
+          catch(e){ this.mem = this.mem||{}; } },
+  save(){ try{ localStorage.setItem("byotChoices", JSON.stringify(this.mem)); }catch(e){} },
+  get(s){ return this.mem[s]||null; },
+  set(s, choice){ if(choice) this.mem[s]=choice; else delete this.mem[s]; this.save(); }
+};
+store.load();
+/* choice = {mode:"youngs"|"kjv"|"custom", text?} */
+function effective(word, context){
+  const c = store.get(word.s);
+  if(c){
+    if(c.mode==="custom") return c.text ?? word.g;
+    if(c.mode==="kjv") return word.kjv;
+    if(c.mode==="youngs") return word.ylt;
+  }
+  return context==="read" ? word.kjv : word.ylt;
+}
+function choiceMode(word){
+  const c = store.get(word.s);
+  return c ? c.mode : "youngs";
+}
+function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+/* Substitute effective renderings into a verse's base text, in word order.
+   kind "yp" for Study (Young's base), "kp" for Read (KJV base). */
+function assemble(verse, kind, context){
+  let out = kind==="yp" ? verse.youngsText : verse.kjvText;
+  for(const w of verse.words){
+    const phrase = w[kind];
+    if(!phrase) continue;
+    const eff = effective(w, context);
+    const def = kind==="yp" ? w.ylt : w.kjv;
+    if(eff===def) continue;
+    const i = out.indexOf(phrase);
+    if(i>=0) out = out.slice(0,i)+eff+out.slice(i+phrase.length);
+  }
+  return out;
+}
+let pendingScroll = null;
+function go(hash, scrollId){ pendingScroll = scrollId||null; location.hash = hash; }
+function applyScroll(){
+  if(pendingScroll){
+    const el = document.getElementById(pendingScroll);
+    if(el) el.scrollIntoView({behavior:"smooth", block:"start"});
+    pendingScroll = null;
+  }
+}
+
+/* ============ SHARED PIECES ============ */
+function renderingControls(word, ctx, bare){
+  const mode = choiceMode(word);
+  const c = store.get(word.s);
+  const customVal = c && c.mode==="custom" ? c.text : effective(word, ctx);
+  return `${bare?"":"<label>Translation</label>"}` + `
+    <select data-act="tsel" data-s="${word.s}" data-ctx="${ctx}">
+      <option value="youngs" ${mode==="youngs"?"selected":""}>Young's (computed)</option>
+      <option value="kjv" ${mode==="kjv"?"selected":""}>King James</option>
+      <option value="custom" ${mode==="custom"?"selected":""}>Custom…</option>
+    </select>
+    ${mode==="custom" ? `<input type="text" data-act="custom" data-s="${word.s}"
+        value="${esc(customVal)}" placeholder="Your rendering…">` : ""}`;
+}
+function wordCard(word, verseN, idx){
+  const cid = `card-${word.s}-${verseN}-${idx}`;
+  return `<div class="word-card" id="${cid}">
+    <div class="heb" lang="he" dir="rtl">${word.h}</div>
+    <div class="tr">${esc(word.t)} · ${word.s}</div>
+    <div class="gloss">${esc(word.g)}</div>
+    <div class="grammar">${esc(word.gr)}</div>
+    <label>Variant</label>
+    <select data-act="variant">
+      <option>Masoretic</option><option>Samaritan</option><option>Dead Sea Scrolls</option>
+    </select>
+    ${renderingControls(word, "study")}
+  </div>`;
+}
+function witnessBlock(notes){
+  if(!notes.length) return "";
+  return `<div class="witness"><h3>Verse scale — witnesses &amp; notes</h3>` +
+    notes.map(n=>`<div class="wnote"><span class="chip">${esc(n.witness)}</span><span>${esc(n.text)}</span></div>`).join("") +
+    `</div>`;
+}
+function textNav(kind, verses, current){
+  const opts = verses.map(n=>`<option value="${n}" ${n===current?"selected":""}>Genesis 1:${n}</option>`).join("");
+  return `<div class="text-nav">
+    <strong>${kind==="study"?"Study":"Read"}</strong>
+    <select disabled><option>Genesis</option></select>
+    <select disabled><option>Chapter 1</option></select>
+    <select data-act="vsel">${opts}</select>
+    <button data-act="vprev">‹ Prev</button>
+    <button data-act="vnext">Next ›</button>
+  </div>`;
+}
+
+/* ============ VIEWS ============ */
+function viewHome(){
+  return `<div class="hero">
+    <div class="heb" style="font-family:'Frank Ruhl Libre',serif;font-size:1.6rem;color:var(--gold)">בְּרֵאשִׁית</div>
+    <h1>Build Your Own Translation</h1>
+    <p>Read the Hebrew Bible word by word, weigh the manuscript witnesses,
+       and build your own translation from public-domain sources.</p>
+    <form class="searchbar" data-form="homesearch">
+      <input type="text" name="q" placeholder="Search the verses — try “light in the darkness”">
+      <button type="submit">Search</button>
+    </form>
+  </div>
+  <div class="doors">
+    <a class="door" href="#/interlinear">
+      <div class="heb">לָמַד</div><h2>Study</h2>
+      <p>Word-by-word interlinear: Hebrew, variants, and your own rendering choices.</p>
+    </a>
+    <a class="door" href="#/read">
+      <div class="heb">קָרָא</div><h2>Read</h2>
+      <p>Clean chapter reading — English only, no apparatus, in the translation you are building.</p>
+    </a>
+  </div>
+  <div class="splash toc">
+    <h2 style="margin-top:0">Table of contents</h2>
+    <div class="anchors">
+      <label>Book <select disabled><option>Genesis</option></select></label>
+      <label>Chapter <select disabled><option>1</option></select></label>
+      <label>Verse <select id="splash-verse">${Array.from({length:31},(_,i)=>`<option value="${i+1}">${i+1}</option>`).join("")}</select></label>
+      <button class="btn" data-act="splashgo" type="button">Go</button>
+      <span class="note" id="splash-note"></span>
+    </div>
+    <div class="book-grid">${CORPUS.books.map(b => b==="Genesis"
+      ? `<a href="#/read">Genesis</a>`
+      : `<span>${b}<span class="tag">not in sample</span></span>`).join("")}</div>
+  </div>`;
+}
+function viewStudy(){
+  const total = CORPUS.verses.length;
+  const n = Math.max(1, Math.min(total, curVerse.study));
+  curVerse.study = n;
+  const v = CORPUS.verses[n-1];
+  return `<h1>Study — Genesis 1:${v.n}</h1>
+    <section class="verse-sec" id="v${v.n}" style="border-top:none;margin-top:.6rem;padding-top:0">
+      <div class="verse-head"><span class="verse-num">${v.n}</span><h2>Genesis 1:${v.n}</h2></div>
+      <div class="word-row">${v.words.map((w,i)=>wordCard(w, v.n, i)).join("")}</div>
+      <div class="sentence"><span class="cap">Your translation — Young's (computed) base, your choices applied</span><br>${esc(assemble(v,"yp","study"))}</div>
+      ${witnessBlock(v.notes)}
+    </section>
+    <div class="frame-foot">
+      <button class="btn" data-act="sprev" ${n<=1?"disabled":""}>‹ Prev</button>
+      <span class="pos">Verse ${n} of ${total} · Genesis 1</span>
+      <button class="btn" data-act="snext" ${n>=total?"disabled":""}>Next ›</button>
+    </div>`;
+}
+function readSegments(verse){
+  /* Build linked segments from the KJV text using each word's kp phrase. */
+  let rest = verse.kjvText, html = "";
+  for(let i=0;i<verse.words.length;i++){
+    const w = verse.words[i];
+    if(!w.kp){ continue; }
+    const idx = rest.indexOf(w.kp);
+    if(idx<0) continue;
+    html += esc(rest.slice(0, idx));
+    const c = store.get(w.s);
+    const disp = c ? effective(w, "read") : w.kp;
+    html += `<a href="#/word/${w.s}">${esc(disp)}</a>`;
+    rest = rest.slice(idx + w.kp.length);
+  }
+  return html + esc(rest);
+}
+function viewRead(){
+  const paras = CORPUS.verses.map(v =>
+    `<p id="rv${v.n}"><span class="vn">${v.n}</span>${readSegments(v)}</p>`).join("") +
+    CORPUS.readExtra.map(v =>
+      `<p id="rv${v.n}"><span class="vn">${v.n}</span>${v.segs.map(seg=>{
+          if(!seg.s) return esc(seg.x);
+          const c = store.get(seg.s);
+          const disp = (c && c.mode==="custom") ? c.text : seg.x;
+          return `<a href="#/word/${seg.s}">${esc(disp)}</a>`;
+        }).join("")}</p>`).join("");
+  return `<h1>Read — Genesis 1 (King James base)</h1>
+  <div class="read-text">${paras}</div>
+  <p class="note">Every word or phrase links to its Hebrew card, where a “See also” list shows where the same word is also used. Your rendering choices apply here too — Read defaults: your choice, then King James.</p>`;
+}
+function viewWordPage(slug){
+  const strongs = slug==="elohim" ? "H430" : slug;
+  const curated = slug==="elohim" ? CORPUS.wordPages.elohim : null;
+  const hits = [];
+  for(const v of CORPUS.verses) for(const w of v.words) if(w.s===strongs) hits.push({v, w});
+  if(!curated && !hits.length)
+    return `<h1>Word not in sample</h1><p class="note">This word's card arrives with the full corpus.</p>`;
+  const first = curated || hits[0].w;
+  const pos = curated ? curated.pos : first.gr;
+  const kjvList = curated ? curated.kjvList : [...new Set(hits.map(x=>x.w.kjv))];
+  const yltList = curated ? curated.yltList : [...new Set(hits.map(x=>x.w.ylt))];
+  const forms = [...new Map(hits.map(x=>[x.w.h, x])).values()];
+  const notes = curated ? curated.notes : [];
+  let occItems;
+  if(curated){
+    occItems = curated.occurrences.map(o => o.verse
+      ? `<li><a href="#/interlinear" data-study="${o.verse}">${o.ref}</a></li>`
+      : (o.read ? `<li><a href="#/read" data-scroll="rv${o.read}">${o.ref}</a></li>`
+                 : `<li>${o.ref} <span class="note">(not in sample)</span></li>`)).join("");
+  } else {
+    const byVerse = [...new Map(hits.map(x=>[x.v.n, x])).values()];
+    occItems = byVerse.map(x=>`<li><a href="#/interlinear" data-study="${x.v.n}">Genesis 1:${x.v.n}</a> — <span lang="he" dir="rtl">${x.w.h}</span> “${esc(x.w.g)}”</li>`).join("");
+  }
+  const w = curated || first;
+  const pseudo = {s:strongs, kjv:first.kjv, ylt:first.ylt, g:first.g};
+  const chips = list => list.map(x=>`<span class="rchip">${esc(x)}</span>`).join("");
+  return `<div class="wordpage">
+    <div class="wcard">
+      <div class="heb-big" lang="he">${w.h}</div>
+      <div class="meta"><span class="tr">${esc(w.t)}</span><span class="snum">${strongs}</span></div>
+      <div class="glossline">${esc(first.g)}</div>
+      <div class="grammar">${esc(pos)}</div>
+      <div class="controls"><label>Your rendering</label>${renderingControls(pseudo, "study", true)}</div>
+    </div>
+    ${forms.length>1 ? `<div class="panel"><h3>Forms in the sample</h3><p>${forms.map(x=>`<span lang="he" dir="rtl">${x.w.h}</span> (${esc(x.w.t)}, Genesis 1:${x.v.n})`).join(" · ")}</p></div>` : ""}
+    <div class="panel"><h3>Renderings</h3>
+      <div class="rlab">King James</div><div class="rchips">${chips(kjvList)}</div>
+      <div class="rlab">Young's (computed)</div><div class="rchips">${chips(yltList)}</div>
+    </div>
+    ${notes.length ? `<div class="panel"><h3>Variants</h3>${witnessBlock(notes)}</div>` : ""}
+    <div class="panel"><h3>See also — where this word is also used</h3><ul class="seealso">${occItems}</ul></div>
+  </div>`;
+}
+function viewSearch(q){
+  let body = "";
+  if(q !== null && q !== ""){
+    if(/light|dark/i.test(q)){
+      body = `<div class="results"><p class="note">Prototype — sample data</p>` +
+        CORPUS.searchSamples.map(r=>`<div class="result"><div class="ref">${r.ref}</div>
+          <div class="txt">${esc(r.text)}</div><div class="score">similarity ${r.score.toFixed(2)}</div></div>`).join("") + `</div>`;
+    } else {
+      body = `<p class="note" style="text-align:center;margin-top:1.4rem">No sample results for this query — full-corpus semantic search arrives with the data path.</p>`;
+    }
+  }
+  return `<div style="text-align:center;padding-top:2rem">
+    <h1>Search the verses</h1>
+    <form class="searchbar" data-form="search">
+      <input type="text" name="q" placeholder="Search by meaning…" value="${q?esc(q):""}">
+      <button type="submit">Search</button>
+    </form></div>${body}`;
+}
+
+/* ============ ROUTER + EVENTS ============ */
+const viewEl = document.getElementById("view");
+const textnavEl = document.getElementById("textnav");
+let curVerse = { study:1, read:1 };
+let lastQuery = null;
+function findWord(s, cardId){
+  if(cardId){
+    const m = cardId.match(/^card-(H\d+)-(\d+)-(\d+)$/);
+    if(m){ const v = CORPUS.verses.find(x=>x.n===+m[2]); if(v) return v.words[+m[3]]; }
+  }
+  for(const v of CORPUS.verses){ const w = v.words.find(x=>x.s===s); if(w) return w; }
+  return {s, kjv:"God", ylt:"God", g:"God"};
+}
+function refreshSentences(){
+  document.querySelectorAll(".verse-sec").forEach(sec=>{
+    const v = CORPUS.verses.find(x=>x.n===+sec.id.slice(1));
+    const el = sec.querySelector(".sentence");
+    if(v && el) el.innerHTML = `<span class="cap">Your translation — Young's (computed) base, your choices applied</span><br>${esc(assemble(v,"yp","study"))}`;
+  });
+}
+function render(){
+  const h = location.hash || "#/";
+  textnavEl.innerHTML = "";
+  if(h.startsWith("#/interlinear")){
+    viewEl.innerHTML = viewStudy();
+    textnavEl.innerHTML = textNav("study",[1,2,3],curVerse.study);
+  } else if(h.startsWith("#/read")){
+    viewEl.innerHTML = viewRead();
+    textnavEl.innerHTML = textNav("read",[1,2,3,4,5],curVerse.read);
+  } else if(h.startsWith("#/word/")){
+    viewEl.innerHTML = viewWordPage(h.slice("#/word/".length));
+  } else if(h.startsWith("#/search")){
+    let q = lastQuery;
+    try{ const p = sessionStorage.getItem("byotPendingQuery");
+         if(p){ q = p; sessionStorage.removeItem("byotPendingQuery"); } }catch(e){}
+    viewEl.innerHTML = viewSearch(q);
+  } else {
+    viewEl.innerHTML = viewHome();
+  }
+  if(pendingScroll) applyScroll(); else window.scrollTo(0,0);
+}
+window.addEventListener("hashchange", render);
+document.addEventListener("click", e=>{
+  const sc = e.target.closest("[data-scroll]");
+  if(sc){ pendingScroll = sc.getAttribute("data-scroll"); }
+  const j = e.target.closest("[data-act='jump']");
+  if(j){ const el = document.getElementById(j.getAttribute("data-t"));
+         if(el) el.scrollIntoView({behavior:"smooth"}); }
+  const bl = e.target.closest("[data-act='booklink']");
+  if(bl){ e.preventDefault();
+          const el = document.getElementById("rv1");
+          if(el) el.scrollIntoView({behavior:"smooth"}); }
+  const sg = e.target.closest("[data-act='splashgo']");
+  if(sg){ const v = +document.getElementById("splash-verse").value;
+          const note = document.getElementById("splash-note");
+          if(v<=5){ curVerse.read = v; go("#/read", "rv"+v); }
+          else note.textContent = "Verse "+v+" is beyond the sample verses (1–5)."; }
+  const st = e.target.closest("[data-study]");
+  if(st){ curVerse.study = +st.getAttribute("data-study");
+          if(location.hash.startsWith("#/interlinear")) render(); }
+  const sf = e.target.closest("[data-act='sprev'],[data-act='snext']");
+  if(sf){ const total = CORPUS.verses.length;
+          curVerse.study += sf.getAttribute("data-act")==="snext" ? 1 : -1;
+          curVerse.study = Math.max(1, Math.min(total, curVerse.study));
+          render(); }
+  const pv = e.target.closest("[data-act='vprev'],[data-act='vnext']");
+  if(pv){
+    const kind = location.hash.startsWith("#/read") ? "read" : "study";
+    const list = kind==="read" ? [1,2,3,4,5] : CORPUS.verses.map(x=>x.n);
+    let i = list.indexOf(curVerse[kind]);
+    i += pv.getAttribute("data-act")==="vnext" ? 1 : -1;
+    i = Math.max(0, Math.min(list.length-1, i));
+    curVerse[kind] = list[i];
+    if(kind==="study"){ render(); }
+    else {
+      const sel = textnavEl.querySelector("[data-act='vsel']");
+      if(sel) sel.value = String(list[i]);
+      const el = document.getElementById("rv"+list[i]);
+      if(el) el.scrollIntoView({behavior:"smooth"});
+    }
+  }
+});
+document.addEventListener("change", e=>{
+  const t = e.target;
+  if(t.matches("[data-act='tsel']")){
+    const s = t.getAttribute("data-s");
+    const card = t.closest(".word-card");
+    const word = findWord(s, card ? card.id : null);
+    const mode = t.value;
+    if(mode==="custom")
+      store.set(s, {mode:"custom", text: effective(word, "study")});
+    else
+      store.set(s, {mode});
+    render();
+    if(mode==="custom"){
+      const inp = viewEl.querySelector(`input[data-act='custom'][data-s='${s}']`);
+      if(inp){ inp.focus(); inp.select(); }
+    }
+  }
+  if(t.matches("[data-act='vsel']")){
+    const kind = location.hash.startsWith("#/read") ? "read" : "study";
+    curVerse[kind] = +t.value;
+    if(kind==="study"){ render(); }
+    else { const el = document.getElementById("rv"+t.value);
+           if(el) el.scrollIntoView({behavior:"smooth"}); }
+  }
+});
+document.addEventListener("input", e=>{
+  const t = e.target;
+  if(t.matches("input[data-act='custom']")){
+    store.set(t.getAttribute("data-s"), {mode:"custom", text: t.value});
+    refreshSentences();
+  }
+});
+document.addEventListener("submit", e=>{
+  const f = e.target.closest("form[data-form]");
+  if(!f) return;
+  e.preventDefault();
+  const q = f.querySelector("input[name='q']").value;
+  if(f.getAttribute("data-form")==="homesearch"){
+    try{ sessionStorage.setItem("byotPendingQuery", q); }catch(err){}
+    lastQuery = q;
+    if(location.hash.startsWith("#/search")) render(); else location.hash = "#/search";
+  } else {
+    lastQuery = q;
+    viewEl.innerHTML = viewSearch(q);
+  }
+});
+render();
+</script>
+</body>
+</html>
