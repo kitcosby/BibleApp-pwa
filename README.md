@@ -17,18 +17,28 @@ The app must be opened over HTTPS (or on localhost) for installing and offline u
 1. Open the app's address in Chrome.
 2. Tap the install prompt ("Install app"), or open the menu (⋮) and tap **Install app** / **Add to Home screen**.
 
-After installing, the app opens offline with the sample data. Your rendering choices are saved on the phone (localStorage).
+The app opens offline. Verses you have viewed while online are kept in the phone's cache and reopen offline. Your rendering choices are saved on the phone (localStorage).
 
 ## Files
 
 - `index.html` — the whole app (data, routes, styles, script)
 - `manifest.webmanifest` — app name, colors, icons
-- `sw.js` — service worker: the app shell is cached (cache `byot-v1`), other requests go to the network first
+- `sw.js` — service worker (cache `byot-v2`): the app shell is cached; database API responses use stale-while-revalidate (`byot-api-v2`); only successful JSON is cached
 - `icon-180.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png` — app icons
 
-## Coming later: live data and semantic search
+## Live data (Lampy database API)
 
-The sample corpus is Genesis 1:1–5 only. Live corpus data and semantic search will come through the Lampy API. The `SearchResult` shape in `index.html` is the contract that API must return.
+The app reads the Bible database only through a read-only JSON API (GET only) on the same host as the app. The base path is the constant `API_BASE` at the top of the script in `index.html`, default `/bible`, so the live API is `/bible/api/...` next to the app.
+
+Endpoints the app uses: `/api/books`, `/api/chapters/<book>`, `/api/verses/<book>/<chapter>`, `/api/verse/<book>/<chapter>/<verse>`, `/api/chapter/<book>/<chapter>`, `/api/word/<Strong's>`, `/api/search?q=<text>`.
+
+Fallback rules:
+
+- If the API is unreachable, or a reply is not JSON (for example an HTML 404 from a plain static server), the app shows the built-in sample with a notice. The sample is Genesis 1:1–5 only. Nothing is invented beyond it.
+- A JSON reply `{"error":"not found"}` with HTTP 404 means the item is not in the database. The app shows "not found" and does not use the sample.
+- Successful replies are kept in memory. After a failure, the same request is not retried for 30 seconds.
+
+Your rendering choices stay on the device and apply on top of live data.
 
 ## License
 
