@@ -397,14 +397,28 @@ function renderingsFor(s){
   const m = wordRenderings.get(s);
   return m ? {kjv:[...m.kjv], ylt:[...m.ylt]} : {kjv:[], ylt:[]};
 }
-/* Live verse payload -> model. words keep Strong's, KJV and computed Young's. */
+/* Live verse payload -> model. words keep Strong's, KJV and computed Young's.
+   sent groups the KJV sentence tokens by their Hebrew word, in English
+   order — the Read page renders from it, never from the Hebrew-order chain. */
 function normVerse(p, b, c, n){
   const words = arr(p.words).map(w=>({
     wid: w.wid, s: w.strongs || null, h: w.hebrew || "", t: w.xlit ?? null,
     g: w.gloss || "", gr: w.morph || "", kjv: w.kjv ?? null, ylt: w.ylt ?? null,
     supplied: !!w.supplied, variants: w.variants || null
   }));
-  return {live:true, book:b, ch:c, n: p.verse ?? n, words,
+  /* The alignment anchors ONE KJV token per Hebrew word; the word's span
+     runs from its anchor to just before the next anchor. */
+  const sent = [];
+  for(const tok of arr(p.kjv_sentence)){
+    const last = sent[sent.length-1];
+    if(tok.heb_pos != null)
+      sent.push({pos: tok.heb_pos, text: tok.word, supplied: !!tok.supplied});
+    else if(last)
+      last.text += " " + tok.word;
+    else
+      sent.push({pos: null, text: tok.word, supplied: !!tok.supplied});
+  }
+  return {live:true, book:b, ch:c, n: p.verse ?? n, words, sent,
     notes: arr(p.witnesses).map(x=>({witness:x.witness, text:x.note || x.text || ""}))};
 }
 async function getVerse(b, c, v){
@@ -559,8 +573,28 @@ function studySentence(v){
   const t = sampleAssemble(v, "yp");
   return t==null ? `<span class="note">Young's base text is not available for this verse.</span>` : cap + esc(t);
 }
+/* Live Read: the KJV sentence in its own English order. A Hebrew word's
+   phrase is one link; the reader's own choice replaces the phrase when it
+   differs from the KJV default; supplied words are italic. */
+function liveReadHtml(v){
+  if(!v.sent || !v.sent.length) return liveWordsHtml(v, "read", true);
+  const parts = [];
+  for(const g of v.sent){
+    if(g.pos == null){
+      parts.push(g.supplied ? `<i>${esc(g.text)}</i>` : esc(g.text));
+      continue;
+    }
+    const w = v.words[g.pos-1];
+    if(!w){ parts.push(esc(g.text)); continue; }
+    const eff = effective(w, "read");
+    const shown = (eff === null) ? g.text : (eff === "" ? "" : (eff !== w.kjv ? eff : g.text));
+    if(shown === "") continue;
+    parts.push(w.s ? `<a href="#/word/${esc(w.s)}">${esc(shown)}</a>` : esc(shown));
+  }
+  return parts.join(" ");
+}
 function readHtml(v){
-  if(v.live) return liveWordsHtml(v, "read", true);
+  if(v.live) return liveReadHtml(v);
   if(v.segs) return v.segs.map(seg=>{
     if(!seg.s) return esc(seg.x);
     const c = store.get(seg.s);
