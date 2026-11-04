@@ -307,6 +307,93 @@ const variantStore = {
   setWord(s, t, k){ if(!s) return; if(k === this.def(t)) delete this.w[s]; else this.w[s] = k; this.saveW(); }
 };
 variantStore.load();
+
+/* ============ BASE TEXT (KJV <-> Young's), per view, sticky ============ */
+const baseStore = {
+  v: {study: "ylt", read: "kjv"},
+  load(){ try{ Object.assign(this.v, JSON.parse(localStorage.getItem("byotBase")||"{}") || {}); }catch(e){} },
+  save(){ try{ localStorage.setItem("byotBase", JSON.stringify(this.v)); }catch(e){} },
+  get(ctx){ return this.v[ctx] || (ctx === "read" ? "kjv" : "ylt"); },
+  set(ctx, k){ this.v[ctx] = k; this.save(); }
+};
+baseStore.load();
+function baseToggleHtml(ctx){
+  const curB = baseStore.get(ctx);
+  return `<label>Base <select data-act="base" data-ctx="${ctx}">
+    <option value="ylt" ${curB === "ylt" ? "selected" : ""}>Young's (computed)</option>
+    <option value="kjv" ${curB === "kjv" ? "selected" : ""}>King James</option>
+  </select></label>`;
+}
+/* The verse's Young's text with the reader's renderings substituted at
+   each word's own Young's phrase (ctx picks the precedence chain). */
+function yltSubstHtml(v, ctx){
+  const subs = [];
+  const used = [];
+  v.words.forEach((w, i) => {
+    if(!w.ylt) return;
+    if(!w.s || !store.get(w.s)) return;  // only explicit choices substitute
+    const eff = effective(w, ctx);
+    if(eff == null || eff === "" || eff === w.ylt) return;
+    let from = 0, idx = -1;
+    while(true){
+      idx = v.yltText.indexOf(w.ylt, from);
+      if(idx < 0) break;
+      if(!used.some(([a, b2]) => idx < b2 && idx + w.ylt.length > a)) break;
+      from = idx + 1;
+    }
+    if(idx < 0) return;
+    used.push([idx, idx + w.ylt.length]);
+    subs.push({idx, len: w.ylt.length, eff, w, pos: i + 1});
+  });
+  subs.sort((a, b2) => a.idx - b2.idx);
+  let html = "", cursor = 0;
+  for(const s of subs){
+    html += esc(v.yltText.slice(cursor, s.idx));
+    html += s.w.s
+      ? `<a href="#/word/${esc(s.w.s)}/${v.book}/${v.ch}/${v.n}/${s.pos}">${esc(s.eff)}</a>`
+      : esc(s.eff);
+    cursor = s.idx + s.len;
+  }
+  html += esc(v.yltText.slice(cursor));
+  return html;
+}
+/* The KJV base sentence from kjv_sentence spans. Spans are per-token;
+   the runs of consecutive tokens sharing one anchor word are that
+   word's KJV phrase. A reader's rendering replaces a run ONLY when
+   the run's joined text is exactly the word's KJV phrase (a clean
+   run); noisy runs keep the KJV text token by token, so alignment
+   noise can never lose or duplicate words. */
+function kjvBaseHtml(v, ctx){
+  const parts = [];
+  let i = 0;
+  while(i < v.sent.length){
+    const g = v.sent[i];
+    if(g.pos == null){
+      parts.push(g.supplied ? `<i>${esc(g.text)}</i>` : esc(g.text));
+      i++;
+      continue;
+    }
+    let j = i;
+    const toks = [];
+    while(j < v.sent.length && v.sent[j].pos === g.pos){ toks.push(v.sent[j].text); j++; }
+    const w = v.words[g.pos-1];
+    const joined = toks.join(" ");
+    let substituted = false;
+    if(w && w.kjv && joined === w.kjv && w.s && store.get(w.s)){
+      const eff = effective(w, ctx);
+      if(eff !== null && eff !== ""){
+        parts.push(`<a href="#/word/${esc(w.s)}/${v.book}/${v.ch}/${v.n}/${g.pos}">${esc(eff)}</a>`);
+        substituted = true;
+      }
+    }
+    if(!substituted){
+      for(const tk of toks)
+        parts.push(w && w.s ? `<a href="#/word/${esc(w.s)}/${v.book}/${v.ch}/${v.n}/${g.pos}">${esc(tk)}</a>` : esc(tk));
+    }
+    i = j;
+  }
+  return parts.join(" ");
+}
 /* The word's single-token textual variant row for a tradition, or null.
    Phrase-length variant texts (e.g. Samaritan additions) are listed in
    the variants panel but never swapped in as a word form. */
@@ -745,68 +832,26 @@ function liveWordsHtml(v, ctx, link){
   return parts.join(" ");
 }
 function studySentence(v){
-  const cap = `<span class="cap">Your translation — Young's (computed) base, your choices applied</span><br>`;
   if(v.live){
-    /* Kit's ruling (2026-11-03): the Study sentence in English order
-       with the reader's choices applied. Primary construction: the
-       verse's actual Young's text (English order by construction),
-       with each word's own Young's phrase replaced by the reader's
-       rendering where they differ — the sample path's substitution
-       method, on the real text. (The kjv_sentence span construction
-       was tried first and breaks on verses whose automatic alignment
-       anchors are noisy: folded neighbour words get replaced by the
-       anchor word's phrase.) Words with no Young's phrase keep
-       Young's own wording in the sentence; their frames still show
-       the choice. No Young's text -> kjv_sentence spans; no sentence
-       at all (non-TR Greek tradition) -> chain the frames. */
-    if(v.yltText && !(v.words[0] && v.words[0].trad)){
-      const subs = [];
-      const used = [];
-      v.words.forEach((w, i) => {
-        if(!w.ylt) return;
-        const eff = effective(w, "study");
-        if(eff == null || eff === "" || eff === w.ylt) return;
-        let from = 0, idx = -1;
-        while(true){
-          idx = v.yltText.indexOf(w.ylt, from);
-          if(idx < 0) break;
-          if(!used.some(([a, b2]) => idx < b2 && idx + w.ylt.length > a)) break;
-          from = idx + 1;
-        }
-        if(idx < 0) return;
-        used.push([idx, idx + w.ylt.length]);
-        subs.push({idx, len: w.ylt.length, eff, w, pos: i + 1});
-      });
-      subs.sort((a, b2) => a.idx - b2.idx);
-      let html = "", cursor = 0;
-      for(const s of subs){
-        html += esc(v.yltText.slice(cursor, s.idx));
-        html += s.w.s
-          ? `<a href="#/word/${esc(s.w.s)}/${v.book}/${v.ch}/${v.n}/${s.pos}">${esc(s.eff)}</a>`
-          : esc(s.eff);
-        cursor = s.idx + s.len;
-      }
-      html += esc(v.yltText.slice(cursor));
-      return cap + html;
-    }
-    if(v.sent && v.sent.length){
-      const parts = [];
-      for(const g of v.sent){
-        if(g.pos == null){
-          parts.push(g.supplied ? `<i>${esc(g.text)}</i>` : esc(g.text));
-          continue;
-        }
-        const w = v.words[g.pos-1];
-        if(!w){ parts.push(esc(g.text)); continue; }
-        const eff = effective(w, "study");
-        const shown = (eff === null) ? g.text : eff;
-        if(shown === "") continue;
-        parts.push(w.s ? `<a href="#/word/${esc(w.s)}/${v.book}/${v.ch}/${v.n}/${g.pos}">${esc(shown)}</a>` : esc(shown));
-      }
-      return cap + parts.join(" ");
+    /* Kit's rulings (2026-11-03): the Study sentence in English order
+       with the reader's choices applied, and the base toggleable
+       between Young's and KJV. Young's base: the verse's actual
+       Young's text with substitutions at each word's own Young's
+       phrase (yltSubstHtml). KJV base: kjv_sentence spans with
+       substitutions on clean spans only (kjvBaseHtml). A base whose
+       data is missing falls back to the other; a non-TR Greek
+       tradition (whose frames are the variant's own words) chains
+       the frames. */
+    const base = baseStore.get("study");
+    const cap = `<span class="cap">Your translation — ${base === "kjv" ? "King James" : "Young's (computed)"} base, your choices applied</span> ${baseToggleHtml("study")}<br>`;
+    if(!(v.words[0] && v.words[0].trad)){
+      if(base === "ylt" && v.yltText) return cap + yltSubstHtml(v, "study");
+      if(v.sent && v.sent.length) return cap + kjvBaseHtml(v, "study");
+      if(v.yltText) return cap + yltSubstHtml(v, "study");
     }
     return cap + liveWordsHtml(v, "study", false);
   }
+  const cap = `<span class="cap">Your translation — Young's (computed) base, your choices applied</span><br>`;
   const t = sampleAssemble(v, "yp");
   return t==null ? `<span class="note">Young's base text is not available for this verse.</span>` : cap + esc(t);
 }
@@ -831,6 +876,8 @@ function liveReadHtml(v){
   return parts.join(" ");
 }
 function readHtml(v){
+  if(v.live && baseStore.get("read") === "ylt" && v.yltText && !(v.words[0] && v.words[0].trad))
+    return yltSubstHtml(v, "read");
   if(v.live) return liveReadHtml(v);
   if(v.segs) return v.segs.map(seg=>{
     if(!seg.s) return esc(seg.x);
@@ -954,10 +1001,10 @@ async function viewRead(){
     return `<p id="rv${v.n}"><span class="vn">${v.n}</span>${html ||
       `<span class="note">Text not available for this verse.</span>`}</p>`;
   }).join("");
-  return {sample, nav, html: bannerFor(sample) + `<h1>Read — ${esc(bookName(cur.book))} ${cur.ch} (King James base)</h1>
-  ${defaultVariantHtml(cur.book >= 40 ? "NT" : "OT")}
+  return {sample, nav, html: bannerFor(sample) + `<h1>Read — ${esc(bookName(cur.book))} ${cur.ch} (${baseStore.get("read") === "ylt" ? "Young's" : "King James"} base)</h1>
+  ${defaultVariantHtml(cur.book >= 40 ? "NT" : "OT")} ${baseToggleHtml("read")}
   <div class="read-text">${paras}</div>
-  <p class="note">Every word or phrase links to its ${cur.book >= 40 ? "Greek" : "Hebrew"} card, where a “See also” list shows where the same word is also used. Your rendering choices apply here too — Read defaults: your choice, then King James.</p>`};
+  <p class="note">Every word or phrase links to its ${cur.book >= 40 ? "Greek" : "Hebrew"} card, where a “See also” list shows where the same word is also used. Your rendering choices apply here too — Read defaults: your choice, then ${baseStore.get("read") === "ylt" ? "Young's" : "King James"}.</p>`};
 }
 /* Word-card links may carry the verse they were tapped in:
    #/word/<Strongs>/<book>/<chapter>/<verse>/<wordPos>. The context powers
@@ -1182,6 +1229,7 @@ document.addEventListener("change", e=>{
     return;
   }
   if(t.matches("[data-act='defvar']")){ variantStore.setDef(t.getAttribute("data-t"), t.value); render(); return; }
+  if(t.matches("[data-act='base']")){ baseStore.set(t.getAttribute("data-ctx"), t.value); render(); return; }
   if(t.matches("[data-act='variant']")){ variantStore.setWord(t.getAttribute("data-s"), t.getAttribute("data-t"), t.value); render(); return; }
   if(t.matches("[data-act='bsel']") || t.matches("[data-act='hbook']")){ cur.book = +t.value; cur.ch = 1; cur.v = 1; render(); return; }
   if(t.matches("[data-act='csel'],[data-act='hch']")){ cur.ch = +t.value; cur.v = 1; render(); return; }
