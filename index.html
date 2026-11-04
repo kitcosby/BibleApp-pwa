@@ -288,6 +288,45 @@ const store = {
 };
 store.load();
 
+/* ============ VARIANT DEFAULTS (sticky; per-word overrides) ============
+   OT traditions: Masoretic (base), Samaritan Pentateuch (witness "SP"),
+   Dead Sea Scrolls (scroll sigla). NT: Textus Receptus (base),
+   Byzantine, SBLGNT. The page-level dropdown sets the default; a word
+   card's own Variant select overrides it for that Strong's number. */
+const OT_VARIANTS = [["mt","Masoretic"],["sp","Samaritan Pentateuch"],["dss","Dead Sea Scrolls"]];
+const NT_VARIANTS = [["tr","Textus Receptus"],["byz","Byzantine"],["sbl","SBLGNT"]];
+const variantStore = {
+  d: {ot:"mt", nt:"tr"}, w: {},
+  load(){ try{ Object.assign(this.d, JSON.parse(localStorage.getItem("byotVariantDefaults")||"{}") || {});
+               this.w = JSON.parse(localStorage.getItem("byotVariantWords")||"{}") || {}; }catch(e){} },
+  saveD(){ try{ localStorage.setItem("byotVariantDefaults", JSON.stringify(this.d)); }catch(e){} },
+  saveW(){ try{ localStorage.setItem("byotVariantWords", JSON.stringify(this.w)); }catch(e){} },
+  def(t){ return t==="NT" ? this.d.nt : this.d.ot; },
+  setDef(t, k){ if(t==="NT") this.d.nt = k; else this.d.ot = k; this.saveD(); },
+  forWord(s, t){ return (s && this.w[s]) || this.def(t); },
+  setWord(s, t, k){ if(!s) return; if(k === this.def(t)) delete this.w[s]; else this.w[s] = k; this.saveW(); }
+};
+variantStore.load();
+/* The word's single-token textual variant row for a tradition, or null.
+   Phrase-length variant texts (e.g. Samaritan additions) are listed in
+   the variants panel but never swapped in as a word form. */
+function wordVariantRow(w, key){
+  if(!w || !Array.isArray(w.variants)) return null;
+  for(const x of w.variants){
+    if(x.kind !== "textual" || !x.text || x.text.includes(" ")) continue;
+    if(key === "sp" && x.witness === "SP") return x;
+    if(key === "dss" && x.witness && x.witness !== "SP" && x.witness !== "MT") return x;
+  }
+  return null;
+}
+function defaultVariantHtml(t){
+  const opts = t === "NT" ? NT_VARIANTS : OT_VARIANTS;
+  const curD = variantStore.def(t);
+  return `<div style="margin:.5rem 0"><label>Default variant <select data-act="defvar" data-t="${t}">` +
+    opts.map(([k,l]) => `<option value="${k}" ${k===curD ? "selected" : ""}>${l}</option>`).join("") +
+    `</select></label></div>`;
+}
+
 /* A rendering in parentheses, e.g. "(untranslated)", is not a translation. */
 function isUntranslated(s){ return typeof s==="string" && /^\(.*\)$/.test(s.trim()); }
 
@@ -472,7 +511,7 @@ function renderingsFor(s){
    order — the Read page renders from it, never from the Hebrew-order chain. */
 function normVerse(p, b, c, n){
   const greek = arr(p.greek_words).length > 0;
-  const words = greek
+  let words = greek
     ? arr(p.greek_words).map(w=>({
         wid: null, s: w.strongs || null, h: w.greek || "", t: w.translit ?? null,
         g: w.gloss || "", gr: w.morph || "", kjv: w.kjv ?? null, ylt: w.ylt ?? null,
@@ -485,7 +524,7 @@ function normVerse(p, b, c, n){
       }));
   /* The alignment anchors ONE KJV token per Hebrew (or Greek) word; the
      word's span runs from its anchor to just before the next anchor. */
-  const sent = [];
+  let sent = [];
   for(const tok of arr(p.kjv_sentence)){
     const anchor = tok.heb_pos != null ? tok.heb_pos : tok.greek_pos;
     const last = sent[sent.length-1];
@@ -495,6 +534,25 @@ function normVerse(p, b, c, n){
       last.text += " " + tok.word;
     else
       sent.push({pos: null, text: tok.word, supplied: !!tok.supplied});
+  }
+  /* NT default variant: swap the TR frames for the chosen tradition's
+     words. The KJV sentence is anchored to the TR, so it is dropped;
+     Read then falls back to the word chain for this tradition. */
+  let tradNote = null;
+  if(greek && p.greek_words_variants){
+    const dk = variantStore.def("NT");
+    const alt = dk !== "tr" ? p.greek_words_variants[dk] : null;
+    if(Array.isArray(alt) && alt.length){
+      words = alt.map(w=>({
+        wid: null, s: w.strongs || null, h: w.greek || "", t: w.translit ?? null,
+        g: w.gloss || "", gr: w.morph || "", kjv: null, ylt: null,
+        supplied: false, variants: null, lemma: w.lemma || null,
+        greek: true, trad: dk
+      }));
+      sent = [];
+      tradNote = {witness: dk === "byz" ? "Byzantine text" : "SBLGNT",
+        text: "The word frames show this tradition's text (assembled from word data). KJV and computed Young's phrases are anchored to the Textus Receptus, so this tradition's frames build from the glosses."};
+    }
   }
   const notes = arr(p.witnesses).map(x=>({witness:x.witness, text:x.note || x.text || ""}));
   if(p.lxx) notes.push({witness:`Septuagint (${p.lxx.osis})`, text:p.lxx.text || ""});
@@ -511,6 +569,7 @@ function normVerse(p, b, c, n){
     if(gv.length && gv.every(x=>x.status === "same"))
       notes.push({witness: "Greek witnesses", text: "The Byzantine text and the SBLGNT read the same text as the Textus Receptus here."});
   }
+  if(tradNote) notes.push(tradNote);
   return {live:true, book:b, ch:c, n: p.verse ?? n, words, sent, greek, notes};
 }
 async function getVerse(b, c, v){
@@ -537,7 +596,8 @@ async function getWordPage(s){
         gr: p.lemma ? `lemma: ${p.lemma}` : "", greek: true,
         lxxOcc: p.lxx_occurrence_count ?? null, occ};
     } else {
-      r.data = {s: p.strongs || s, h: p.hebrew || "", t: p.xlit ?? null, g: p.gloss || "", gr: p.morph || "", occ};
+      r.data = {s: p.strongs || s, h: p.hebrew || "", t: p.xlit ?? null, g: p.gloss || "", gr: p.morph || "",
+        variants: arr(p.variants), occ};
     }
   }
   return r;
@@ -605,22 +665,31 @@ function wordCard(w, verseN, idx){
   if(w.greek){
     return `<div class="word-card" id="${cid}">
     <div class="heb" lang="el">${esc(w.h)}</div>
+    ${w.trad ? `<div class="tag">${w.trad === "byz" ? "Byzantine" : "SBLGNT"} text</div>` : ""}
     <div class="tr">${trans}</div>
     <div class="gloss">${esc(w.g)}</div>
     <div class="grammar">${esc(w.gr)}${w.lemma ? ` · lemma: ${esc(w.lemma)}` : ""}</div>
     ${renderingControls(w, "study")}
   </div>`;
   }
+  const vk = variantStore.forWord(w.s, "OT");
+  const vx = vk !== "mt" ? wordVariantRow(w, vk) : null;
+  const hasOpts = ["mt"];
+  if(wordVariantRow(w, "sp")) hasOpts.push("sp");
+  if(wordVariantRow(w, "dss")) hasOpts.push("dss");
+  const variantCtl = hasOpts.length > 1
+    ? `<label>Variant</label>
+    <select data-act="variant" data-s="${esc(w.s)}" data-t="OT">
+      ${OT_VARIANTS.filter(([k])=>hasOpts.includes(k)).map(([k,l])=>`<option value="${k}" ${k===vk ? "selected" : ""}>${l}</option>`).join("")}
+    </select>` : "";
   return `<div class="word-card" id="${cid}">
-    <div class="heb" lang="he" dir="rtl">${esc(w.h)}</div>
+    <div class="heb" lang="he" dir="rtl">${esc(vx ? vx.text : w.h)}</div>
+    ${vx ? `<div class="tag">${vk === "sp" ? "Samaritan" : "Dead Sea Scrolls"} reading · ${esc(vx.witness || "")}</div>` : ""}
     <div class="tr">${trans}</div>
     <div class="gloss">${esc(w.g)}</div>
     <div class="grammar">${esc(w.gr)}</div>
     ${variantsHtml(w.variants)}
-    <label>Variant</label>
-    <select data-act="variant">
-      <option>Masoretic</option><option>Samaritan</option><option>Dead Sea Scrolls</option>
-    </select>
+    ${variantCtl}
     ${renderingControls(w, "study")}
   </div>`;
 }
@@ -795,6 +864,7 @@ async function viewStudy(){
     : `<p class="note">Word-level data is not available for this verse. Read shows its text.</p>`;
   const ref = `${esc(bookName(cur.book))} ${cur.ch}:${v.n}`;
   return {sample:s2, nav, html: bannerFor(s2) + `<h1>Study — ${ref}</h1>
+    ${defaultVariantHtml(cur.book >= 40 ? "NT" : "OT")}
     <section class="verse-sec" id="v${v.n}" style="border-top:none;margin-top:.6rem;padding-top:0">
       <div class="verse-head"><span class="verse-num">${v.n}</span><h2>${ref}</h2></div>
       ${body}
@@ -824,6 +894,7 @@ async function viewRead(){
       `<span class="note">Text not available for this verse.</span>`}</p>`;
   }).join("");
   return {sample, nav, html: bannerFor(sample) + `<h1>Read — ${esc(bookName(cur.book))} ${cur.ch} (King James base)</h1>
+  ${defaultVariantHtml(cur.book >= 40 ? "NT" : "OT")}
   <div class="read-text">${paras}</div>
   <p class="note">Every word or phrase links to its ${cur.book >= 40 ? "Greek" : "Hebrew"} card, where a “See also” list shows where the same word is also used. Your rendering choices apply here too — Read defaults: your choice, then King James.</p>`};
 }
@@ -886,9 +957,13 @@ async function viewWordPage(slug){
     if(verse && verse.words[ctx.pos-1] && verse.words[ctx.pos-1].s === s)
       strip = wordNavStrip(ctx, verse.words);
   }
+  const wvk = w.greek ? "mt" : variantStore.forWord(s, "OT");
+  const wvx = (!w.greek && wvk !== "mt") ? wordVariantRow(w, wvk) : null;
   return {sample:r.sample, nav:"", html: bannerFor(r.sample) + strip + `<div class="wordpage">
+    ${defaultVariantHtml(w.greek ? "NT" : "OT")}
     <div class="wcard">
-      <div class="heb-big" lang="${w.greek ? "el" : "he"}">${esc(w.h)}</div>
+      <div class="heb-big" lang="${w.greek ? "el" : "he"}">${esc(wvx ? wvx.text : w.h)}</div>
+      ${wvx ? `<div class="tag">${wvk === "sp" ? "Samaritan" : "Dead Sea Scrolls"} reading · ${esc(wvx.witness || "")}</div>` : ""}
       <div class="meta"><span class="tr">${esc(w.t||"")}</span><span class="snum">${esc(s)}</span></div>
       <div class="glossline">${esc(w.g)}</div>
       <div class="grammar">${esc(w.gr)}</div>
@@ -1045,6 +1120,8 @@ document.addEventListener("change", e=>{
     });
     return;
   }
+  if(t.matches("[data-act='defvar']")){ variantStore.setDef(t.getAttribute("data-t"), t.value); render(); return; }
+  if(t.matches("[data-act='variant']")){ variantStore.setWord(t.getAttribute("data-s"), t.getAttribute("data-t"), t.value); render(); return; }
   if(t.matches("[data-act='bsel']") || t.matches("[data-act='hbook']")){ cur.book = +t.value; cur.ch = 1; cur.v = 1; render(); return; }
   if(t.matches("[data-act='csel'],[data-act='hch']")){ cur.ch = +t.value; cur.v = 1; render(); return; }
   if(t.matches("[data-act='vsel']")){
