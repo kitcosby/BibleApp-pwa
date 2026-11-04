@@ -142,7 +142,7 @@ footer{color:var(--slate);font-size:.82rem;text-align:center;padding:1.5rem 1rem
   <a class="brand" href="#/">Build Your Own Translation</a>
   <nav>
     <a href="#/">Home</a><a href="#/interlinear">Study</a>
-    <a href="#/read">Read</a><a href="#/search">Search</a>
+    <a href="#/read">Read</a><a href="#/search">Search</a><a href="#/about">About</a>
   </nav>
 </header>
 <div id="textnav"></div>
@@ -865,6 +865,43 @@ async function viewWordPage(slug){
       <ul class="seealso">${occ || `<li class="note">No other occurrences listed.</li>`}</ul></div>
   </div>`};
 }
+function viewAbout(){
+  const lic = (name, detail) =>
+    `<p style="margin:.45rem 0"><strong>${name}</strong> — ${detail}</p>`;
+  return {nav:"", html: `
+  <h1>About</h1>
+  <section class="panel">
+    <p>Build Your Own Translation reads the Bible word by word —
+    Hebrew and Greek — with the manuscript witnesses side by side, and
+    lets you build your own rendering from public-domain and openly
+    licensed sources. Per-word Young's renderings are <em>computed</em>
+    alignments produced by this project and are labeled as such;
+    assembled Greek verse text is likewise labeled, never presented
+    as a printed edition.</p>
+  </section>
+  <h2>Source code</h2>
+  <section class="panel">
+    ${lic(`<a href="https://github.com/kitcosby/BibleApp-pwa" target="_blank" rel="noopener">kitcosby/BibleApp-pwa</a>`,
+      `this app. Released under <a href="https://unlicense.org/" target="_blank" rel="noopener">The Unlicense</a> (public domain).`)}
+    ${lic(`<a href="https://github.com/kitcosby/bible-project" target="_blank" rel="noopener">kitcosby/bible-project</a>`,
+      `the Bible database, loaders, and the API this app reads. Also released under The Unlicense.`)}
+  </section>
+  <h2>Texts &amp; licenses</h2>
+  <section class="panel">
+    ${lic("Hebrew Bible", "Westminster Leningrad Codex via the Open Scriptures Hebrew Bible (CC BY 4.0); the Kethiv/Qere readings come from the same source.")}
+    ${lic("King James Version", "public domain (text via CrossWire).")}
+    ${lic("Young's Literal Translation (1898)", "public domain. The per-word Young's phrases in Study are this project's computed alignments, not a published per-word edition.")}
+    ${lic("Septuagint", "Rahlfs 1935 in the CenterBLC Text-Fabric edition (dataset MIT; provenance CATSS &rarr; Eliran Wong &rarr; CenterBLC). Verse text is assembled from the word data.")}
+    ${lic("Samaritan Pentateuch", "DT-UCPH Text-Fabric edition (CC BY-NC 4.0).")}
+    ${lic("Dead Sea Scrolls", "ETCBC/dss Text-Fabric dataset (CC BY-NC 4.0).")}
+    ${lic("Syriac Peshitta", "ETCBC/peshitta Text-Fabric dataset (CC BY-NC 4.0).")}
+    ${lic("Greek New Testament (primary)", "Textus Receptus, parsed by Maurice A. Robinson — public domain.")}
+    ${lic("Byzantine text (witness)", "Robinson&ndash;Pierpont Majority Text — The Unlicense.")}
+    ${lic("SBLGNT (witness)", "SBL Greek New Testament, used under the SBLGNT EULA; morphology and lemmas by MorphGNT (CC BY-SA 3.0).")}
+    ${lic("Greek word helps", "lemmas and glosses on Greek words are derived by this project from the Septuagint word data (most frequent per Strong's number) and are labeled as derived.")}
+    <p class="note">Datasets under CC BY-NC terms are used here non-commercially, with the attribution above.</p>
+  </section>`};
+}
 async function viewSearch(q){
   const head = `<div style="text-align:center;padding-top:2rem">
     <h1>Search the verses</h1>
@@ -906,6 +943,7 @@ async function render(){
     if(h.startsWith("#/interlinear")) out = await viewStudy();
     else if(h.startsWith("#/read")) out = await viewRead();
     else if(h.startsWith("#/word/")) out = await viewWordPage(decodeURIComponent(h.slice("#/word/".length)));
+    else if(h.startsWith("#/about")) out = viewAbout();
     else if(h.startsWith("#/search")){
       let q = lastQuery;
       try{ const p = sessionStorage.getItem("byotPendingQuery");
