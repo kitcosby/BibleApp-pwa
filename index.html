@@ -19,6 +19,18 @@
   --ink:#2B2118; --slate:#5D6D7E; --card:#FFFDF6; --line:#D9C48D;
 }
 *{box-sizing:border-box}
+/* One control style for every select, button and text field: app font,
+   44px minimum height, same border, radius and padding. Specific rules
+   below change only colour or layout, never font or height. */
+button,select,input[type=text]{font-family:Inter,system-ui,sans-serif;font-size:.92rem;line-height:1.25;
+  min-height:44px;color:var(--ink);background:var(--card);border:1px solid var(--bronze);
+  border-radius:8px;padding:.45rem .55rem}
+/* Custom arrow: the text area is exactly the padding box, so the selected
+   label is never clipped by a native arrow zone. */
+select{appearance:none;-webkit-appearance:none;padding-right:1.8rem;cursor:pointer;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%232B2118' stroke-width='1.6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right .6rem center;background-size:12px 8px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 html{scroll-behavior:smooth}
 body{margin:0;background:var(--parchment);color:var(--ink);
   font-family:Inter,system-ui,sans-serif;font-size:16px;line-height:1.45}
@@ -27,13 +39,17 @@ a{color:var(--gold)}
   display:flex;align-items:center;gap:1rem;padding:max(.55rem, env(safe-area-inset-top)) 1rem .55rem;flex-wrap:wrap}
 .site-nav .brand{font-family:"Frank Ruhl Libre",serif;font-weight:700;font-size:1.05rem;color:var(--parchment);text-decoration:none}
 .site-nav nav{display:flex;gap:.9rem;margin-left:auto}
-.site-nav nav a{color:var(--papyrus);text-decoration:none;font-size:.92rem}
+.site-nav nav a{color:var(--papyrus);text-decoration:none;font-size:.92rem;
+  display:inline-block;padding:.75rem .3rem;margin:-.75rem -.1rem}
 .site-nav nav a:hover{color:#fff;text-decoration:underline}
 .text-nav{position:sticky;top:45px;z-index:40;background:var(--papyrus);
   border-bottom:1px solid var(--bronze);display:flex;gap:.5rem;align-items:center;
   padding:.4rem 1rem;flex-wrap:wrap;font-size:.9rem}
-.text-nav select,.text-nav button{font:inherit;font-size:.88rem;padding:.25rem .45rem;
-  border:1px solid var(--bronze);border-radius:6px;background:var(--card);color:var(--ink)}
+.text-nav [data-act=bsel]{flex:1 1 7rem;min-width:0}
+.text-nav [data-act=csel]{width:4.6rem}
+.text-nav [data-act=vsel]{width:6.2rem}
+.text-nav .steps{display:flex;gap:.5rem;flex:1 0 100%}
+.text-nav .steps button{flex:1 1 0}
 .text-nav button:disabled,.text-nav select:disabled{opacity:.45}
 .text-nav .pos{color:var(--slate);margin:0 auto}
 .text-nav a.btn{text-decoration:none}
@@ -59,19 +75,23 @@ h1,h2,h3{font-family:"Frank Ruhl Libre",serif}
 .verse-head{display:flex;align-items:baseline;gap:.8rem}
 .verse-num{font-family:"Frank Ruhl Libre",serif;font-size:2rem;color:var(--gold);font-weight:700}
 .verse-head h2{margin:0;font-size:1.25rem}
+.frame-ref{margin:.1rem 0 .3rem;font-size:1.25rem}
 .jump-row{display:flex;gap:.5rem;margin:.6rem 0 0}
-.jump-row button{font:inherit;font-size:.85rem;padding:.3rem .8rem;border:1px solid var(--bronze);
-  background:var(--card);border-radius:999px;cursor:pointer}
-.word-row{display:flex;flex-wrap:wrap;gap:.7rem;direction:rtl;margin:1rem 0}
-.word-card{direction:rtl;width:172px;background:var(--card);border:1px solid var(--bronze);
-  border-radius:12px;padding:.7rem;display:flex;flex-direction:column;gap:.3rem}
+.jump-row button{cursor:pointer}
+.word-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(172px,1fr));gap:.7rem;direction:rtl;margin:1rem 0}
+/* Phones: two columns. An odd last card spans the full row, so no frame is stranded. */
+@media (max-width:560px){
+  .word-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem;margin-left:-.35rem;margin-right:-.35rem}
+  .word-row>.word-card:last-child:nth-child(odd){grid-column:1/-1}
+}
+.word-card{direction:rtl;min-width:0;background:var(--card);border:1px solid var(--bronze);
+  border-radius:12px;padding:.5rem;display:flex;flex-direction:column;gap:.3rem}
 .word-card .heb{font-family:"Frank Ruhl Libre",serif;font-size:1.55rem;line-height:1.2}
 .word-card .tr{font-size:.82rem;color:var(--slate);direction:ltr;text-align:left}
 .word-card .gloss{font-weight:600;direction:ltr;text-align:left}
 .word-card .grammar{font-size:.76rem;color:var(--slate);direction:ltr;text-align:left}
 .word-card label{font-size:.72rem;color:var(--slate);direction:ltr;text-align:left}
-.word-card select,.word-card input[type=text]{width:100%;font:inherit;font-size:.85rem;
-  padding:.3rem;border:1px solid var(--line);border-radius:6px;background:#fff;direction:ltr}
+.word-card select,.word-card input[type=text]{width:100%;min-width:0;border-color:var(--line);direction:ltr}
 .sentence{background:#fff;border:1px solid var(--line);border-left:4px solid var(--gold);
   border-radius:8px;padding:.8rem 1rem;font-family:"Frank Ruhl Libre",serif;font-size:1.12rem}
 .sentence .cap{font-family:Inter,sans-serif;font-size:.75rem;color:var(--slate);
@@ -84,7 +104,7 @@ h1,h2,h3{font-family:"Frank Ruhl Libre",serif}
   font-size:.75rem;font-weight:600;white-space:nowrap}
 .splash{background:var(--card);border:1px solid var(--bronze);border-radius:14px;padding:1.2rem;margin-bottom:1.6rem}
 .splash .anchors{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem}
-.splash select{font:inherit;padding:.35rem;border:1px solid var(--bronze);border-radius:6px;background:#fff}
+.splash select{min-width:0}
 .book-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:.4rem}
 .book-grid a,.book-grid span{padding:.35rem .5rem;border-radius:6px;font-size:.92rem}
 .book-grid a{background:#F4EDD8;text-decoration:none}
@@ -121,16 +141,13 @@ h1,h2,h3{font-family:"Frank Ruhl Libre",serif}
 .wcard .controls{border-top:1px solid var(--line);margin-top:.9rem;padding-top:.8rem;
   display:flex;gap:.6rem;align-items:center;flex-wrap:wrap}
 .wcard .controls label{font-size:.8rem;color:var(--slate);text-transform:uppercase;letter-spacing:.05em}
-.wcard .controls select,.wcard .controls input[type=text]{font:inherit;font-size:.92rem;
-  padding:.35rem;border:1px solid var(--line);border-radius:6px;background:#fff}
+.wcard .controls select,.wcard .controls input[type=text]{border-color:var(--line)}
 .panel{border:1px solid var(--line);border-radius:12px;padding:.9rem 1.1rem;margin-top:1rem;background:#fff}
 .panel h3{margin:.1rem 0 .5rem;font-size:1.02rem}
 .panel p{margin:.2rem 0}
 .rchips{display:flex;flex-wrap:wrap;gap:.35rem}
 .rchip{background:#F4EDD8;border:1px solid var(--line);border-radius:999px;padding:.15rem .7rem;font-size:.92rem}
 .rlab{font-size:.75rem;color:var(--slate);text-transform:uppercase;letter-spacing:.06em;margin:.5rem 0 .3rem}
-select.inline{font:inherit;padding:.35rem;border:1px solid var(--bronze);border-radius:6px;background:#fff}
-input.custom-in{font:inherit;padding:.35rem .6rem;border:1px solid var(--bronze);border-radius:6px}
 footer{color:var(--slate);font-size:.82rem;text-align:center;padding:1.5rem 1rem;border-top:1px solid var(--line)}
 .banner{background:var(--papyrus);border:1px solid var(--bronze);border-left:4px solid var(--gold);border-radius:6px;padding:.55rem .8rem;margin:.8rem 0;font-family:Inter,sans-serif;font-size:.85rem}
 .state{font-family:Inter,sans-serif;color:var(--slate);text-align:center;margin:2rem 0}
@@ -726,12 +743,12 @@ function unavailableMsg(what){
   return `${what} is not in the built-in sample, and the Bible database is unreachable right now.`;
 }
 function loadingHtml(){ return `<p class="state">Loading…</p>`; }
-function renderingControls(word, ctx, bare){
+function renderingControls(word, ctx, bare, label){
   ctlWords.set(word.s, word);
   const mode = choiceMode(word);
   const c = store.get(word.s);
   const val = c && c.mode==="custom" ? c.text : (effective(word, ctx) ?? "");
-  return `${bare?"":"<label>Translation</label>"}
+  return `${bare?"":`<label>${esc(label || "Translation")}</label>`}
     <select data-act="tsel" data-s="${esc(word.s)}" data-ctx="${ctx}">
       <option value="youngs" ${mode==="youngs"?"selected":""}>Young's (computed)</option>
       <option value="kjv" ${mode==="kjv"?"selected":""}>King James</option>
@@ -739,6 +756,18 @@ function renderingControls(word, ctx, bare){
     </select>
     ${mode==="custom" ? `<input type="text" data-act="custom" data-s="${esc(word.s)}"
         value="${esc(val)}" placeholder="Your rendering…">` : ""}`;
+}
+/* The source the card's rendering comes from, using effective()'s order:
+   reader's choice, then Young's (computed) or King James, then the gloss. */
+function sourceLabel(w, ctx){
+  const c = store.get(w.s);
+  if(c && c.mode==="custom") return "Your rendering";
+  const mode = c ? c.mode : (ctx==="read" ? "kjv" : "youngs");
+  const who = mode==="kjv" ? "King James" : "Young's (computed)";
+  const raw = mode==="kjv" ? w.kjv : w.ylt;
+  if(raw==null || raw==="") return `Gloss fallback: no ${who} rendering`;
+  const pre = c ? "Your choice · " : "";
+  return isUntranslated(raw) ? `${pre}${who}, untranslated` : pre + who;
 }
 function choiceMode(word){
   const c = store.get(word.s);
@@ -759,7 +788,7 @@ function wordCard(w, verseN, idx){
     <div class="tr">${trans}</div>
     <div class="gloss">${esc(w.g)}</div>
     <div class="grammar">${esc(w.gr)}${w.lemma ? ` · lemma: ${esc(w.lemma)}` : ""}</div>
-    ${renderingControls(w, "study")}
+    ${renderingControls(w, "study", false, sourceLabel(w, "study"))}
   </div>`;
   }
   const vk = variantStore.forWord(w.s, "OT");
@@ -780,7 +809,7 @@ function wordCard(w, verseN, idx){
     <div class="grammar">${esc(w.gr)}</div>
     ${variantsHtml(w.variants)}
     ${variantCtl}
-    ${renderingControls(w, "study")}
+    ${renderingControls(w, "study", false, sourceLabel(w, "study"))}
   </div>`;
 }
 function witnessBlock(notes){
@@ -796,14 +825,16 @@ function textNav(kind, books, chapters, verses){
   const i = verses.indexOf(cur.v);
   const bOpts = bookOptions(books, cur.book);
   const cOpts = chapters.map(n=>opt(n, n, n===cur.ch)).join("");
-  const vOpts = verses.map(n=>opt(n, `${esc(bookName(cur.book))} ${cur.ch}:${n}`, n===cur.v)).join("");
+  const vOpts = verses.map(n=>opt(n, `Verse ${n}`, n===cur.v)).join("");
   return `<div class="text-nav">
     <strong>${kind==="study"?"Study":"Read"}</strong>
     <select data-act="bsel" aria-label="Book">${bOpts}</select>
     <select data-act="csel" aria-label="Chapter">${cOpts}</select>
     <select data-act="vsel" aria-label="Verse">${vOpts}</select>
-    <button data-act="vprev" ${i<=0?"disabled":""}>‹ Prev</button>
-    <button data-act="vnext" ${i<0||i>=verses.length-1?"disabled":""}>Next ›</button>
+    <div class="steps">
+      <button data-act="vprev" ${i<=0?"disabled":""}>‹ Prev</button>
+      <button data-act="vnext" ${i<0||i>=verses.length-1?"disabled":""}>Next ›</button>
+    </div>
   </div>`;
 }
 /* Sample verses: substitute each word's phrase in the base text, in order. */
@@ -973,10 +1004,10 @@ async function viewStudy(){
        <div class="sentence">${studySentence(v)}</div>`
     : `<p class="note">Word-level data is not available for this verse. Read shows its text.</p>`;
   const ref = `${esc(bookName(cur.book))} ${cur.ch}:${v.n}`;
-  return {sample:s2, nav, html: bannerFor(s2) + `<h1>Study — ${ref}</h1>
+  return {sample:s2, nav, html: bannerFor(s2) + `<h1 class="sr-only">Study — ${ref}</h1>
     ${defaultVariantHtml(cur.book >= 40 ? "NT" : "OT")}
     <section class="verse-sec" id="v${v.n}" style="border-top:none;margin-top:.6rem;padding-top:0">
-      <div class="verse-head"><span class="verse-num">${v.n}</span><h2>${ref}</h2></div>
+      <h2 class="frame-ref">${ref}</h2>
       ${body}
       ${witnessBlock(v.notes)}
     </section>
