@@ -682,9 +682,11 @@ async function getWordPage(s){
     if(p.greek != null || /^G\d+$/.test(p.strongs || s)){
       r.data = {s: p.strongs || s, h: p.greek || "", t: null, g: p.gloss || "",
         gr: p.lemma ? `lemma: ${p.lemma}` : "", greek: true,
+        kjvList: arr(p.kjv_phrases), yltList: arr(p.ylt_phrases),
         lxxOcc: p.lxx_occurrence_count ?? null, occ};
     } else {
       r.data = {s: p.strongs || s, h: p.hebrew || "", t: p.xlit ?? null, g: p.gloss || "", gr: p.morph || "",
+        kjvList: arr(p.kjv_phrases), yltList: arr(p.ylt_phrases),
         variants: arr(p.variants), occ};
     }
   }
@@ -1050,7 +1052,10 @@ async function viewWordPage(slug){
   const w = r.data;
   if(!w) return {sample:true, nav:"", html: bannerFor(true) + errorBlock(
     `Word ${esc(s)} is not available: the database is unreachable, and the sample has no card for it.`)};
-  const rend = renderingsFor(s);
+  const sess = renderingsFor(s);
+  const mergeRend = (api, extra) => { const out = [...(api || [])];
+    for(const x of extra) if(!out.includes(x)) out.push(x); return out; };
+  const rend = {kjv: mergeRend(w.kjvList, sess.kjv), ylt: mergeRend(w.yltList, sess.ylt)};
   const pseudo = {s, kjv: rend.kjv[0] ?? null, ylt: rend.ylt[0] ?? null, g: w.g};
   const list = xs => xs.length
     ? xs.map(x=>`<span class="rchip">${esc(x)}</span>`).join("")
