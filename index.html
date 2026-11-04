@@ -750,7 +750,7 @@ function renderingControls(word, ctx, bare, label){
   const val = c && c.mode==="custom" ? c.text : (effective(word, ctx) ?? "");
   return `${bare?"":`<label>${esc(label || "Translation")}</label>`}
     <select data-act="tsel" data-s="${esc(word.s)}" data-ctx="${ctx}">
-      <option value="youngs" ${mode==="youngs"?"selected":""}>Young's (computed)</option>
+      <option value="youngs" ${mode==="youngs"?"selected":""}>Young's</option>
       <option value="kjv" ${mode==="kjv"?"selected":""}>King James</option>
       <option value="custom" ${mode==="custom"?"selected":""}>Custom…</option>
     </select>
