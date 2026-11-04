@@ -164,7 +164,7 @@ footer{color:var(--slate);font-size:.82rem;text-align:center;padding:1.5rem 1rem
 </header>
 <div id="textnav"></div>
 <main id="view"></main>
-<footer>Reads from the Bible database when it is reachable; otherwise a labeled built-in sample (Genesis 1:1–5). Young's renderings are computed alignments, labeled as such.</footer>
+<footer id="appfoot">Reads from the Bible database when it is reachable; otherwise a labeled built-in sample (Genesis 1:1–5). Young's renderings are computed alignments, labeled as such.</footer>
 
 <script>
 "use strict";
@@ -735,6 +735,18 @@ function applyScroll(){
 }
 const SAMPLE_NOTE = "Showing built-in sample data: the Bible database is unreachable, so this shows only the Genesis 1:1–5 sample where it applies. Nothing here is made up.";
 function bannerFor(sample){ return sample ? `<div class="banner" role="status">${SAMPLE_NOTE}</div>` : ""; }
+/* Footer follows the data state: the fallback explanation only belongs
+   on screen while sample data is actually being shown (Kit's ruling). */
+function footerNote(sample){
+  return sample
+    ? "Showing the built-in sample (Genesis 1:1–5) — the Bible database is unreachable right now. Young's renderings are computed alignments, labeled as such."
+    : "Connected to the Bible database. Young's renderings are computed alignments, labeled as such.";
+}
+function setFooter(sample){
+  if(!document.getElementById) return;
+  const f = document.getElementById("appfoot");
+  if(f) f.textContent = footerNote(sample);
+}
 function errorBlock(msg){
   return `<div class="state err"><p>${esc(msg)}</p>
     <button class="btn" data-act="retry" type="button">Try again</button></div>`;
@@ -1212,6 +1224,7 @@ async function render(){
     out = {nav:"", html: errorBlock("Something went wrong loading this page. Try again.")};
   }
   if(seq!==renderSeq) return;
+  if(out && out.sample !== undefined) setFooter(!!out.sample);
   viewEl.innerHTML = out.html;
   textnavEl.innerHTML = out.nav || "";
   if(pendingScroll) applyScroll(); else window.scrollTo(0,0);
