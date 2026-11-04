@@ -471,25 +471,47 @@ function renderingsFor(s){
    sent groups the KJV sentence tokens by their Hebrew word, in English
    order — the Read page renders from it, never from the Hebrew-order chain. */
 function normVerse(p, b, c, n){
-  const words = arr(p.words).map(w=>({
-    wid: w.wid, s: w.strongs || null, h: w.hebrew || "", t: w.xlit ?? null,
-    g: w.gloss || "", gr: w.morph || "", kjv: w.kjv ?? null, ylt: w.ylt ?? null,
-    supplied: !!w.supplied, variants: w.variants || null
-  }));
-  /* The alignment anchors ONE KJV token per Hebrew word; the word's span
-     runs from its anchor to just before the next anchor. */
+  const greek = arr(p.greek_words).length > 0;
+  const words = greek
+    ? arr(p.greek_words).map(w=>({
+        wid: null, s: w.strongs || null, h: w.greek || "", t: w.translit ?? null,
+        g: w.gloss || "", gr: w.morph || "", kjv: w.kjv ?? null, ylt: w.ylt ?? null,
+        supplied: false, variants: null, lemma: w.lemma || null, greek: true
+      }))
+    : arr(p.words).map(w=>({
+        wid: w.wid, s: w.strongs || null, h: w.hebrew || "", t: w.xlit ?? null,
+        g: w.gloss || "", gr: w.morph || "", kjv: w.kjv ?? null, ylt: w.ylt ?? null,
+        supplied: !!w.supplied, variants: w.variants || null
+      }));
+  /* The alignment anchors ONE KJV token per Hebrew (or Greek) word; the
+     word's span runs from its anchor to just before the next anchor. */
   const sent = [];
   for(const tok of arr(p.kjv_sentence)){
+    const anchor = tok.heb_pos != null ? tok.heb_pos : tok.greek_pos;
     const last = sent[sent.length-1];
-    if(tok.heb_pos != null)
-      sent.push({pos: tok.heb_pos, text: tok.word, supplied: !!tok.supplied});
+    if(anchor != null)
+      sent.push({pos: anchor, text: tok.word, supplied: !!tok.supplied});
     else if(last)
       last.text += " " + tok.word;
     else
       sent.push({pos: null, text: tok.word, supplied: !!tok.supplied});
   }
-  return {live:true, book:b, ch:c, n: p.verse ?? n, words, sent,
-    notes: arr(p.witnesses).map(x=>({witness:x.witness, text:x.note || x.text || ""}))};
+  const notes = arr(p.witnesses).map(x=>({witness:x.witness, text:x.note || x.text || ""}));
+  if(p.lxx) notes.push({witness:`Septuagint (${p.lxx.osis})`, text:p.lxx.text || ""});
+  if(p.lxx_alt) notes.push({witness:`Septuagint (${p.lxx_alt.osis})`, text:p.lxx_alt.text || ""});
+  if(greek){
+    const gv = arr(p.greek_variants);
+    for(const x of gv){
+      const label = x.tradition === "byz" ? "Byzantine text" : "SBLGNT";
+      if(x.status === "variant")
+        notes.push({witness: label, text: `${x.detail ? x.detail + " — " : ""}${x.text || ""}`});
+      else if(x.status === "absent")
+        notes.push({witness: label, text: "This verse is not present in this tradition."});
+    }
+    if(gv.length && gv.every(x=>x.status === "same"))
+      notes.push({witness: "Greek witnesses", text: "The Byzantine text and the SBLGNT read the same text as the Textus Receptus here."});
+  }
+  return {live:true, book:b, ch:c, n: p.verse ?? n, words, sent, greek, notes};
 }
 async function getVerse(b, c, v){
   const r = await fromApi(`/api/verse/${b}/${c}/${v}`, ()=>sampleVerse(b, c, v));
@@ -509,8 +531,14 @@ async function getWordPage(s){
   const r = await fromApi(`/api/word/${encodeURIComponent(s)}`, ()=>sampleWord(s));
   if(r.data && !r.sample){
     const p = r.data;
-    r.data = {s: p.strongs || s, h: p.hebrew || "", t: p.xlit ?? null, g: p.gloss || "", gr: p.morph || "",
-      occ: arr(p.occurrences).map(o=>({book_id:o.book_id, chapter:o.chapter, verse:o.verse, ref:o.ref, to:"study"}))};
+    const occ = arr(p.occurrences).map(o=>({book_id:o.book_id, chapter:o.chapter, verse:o.verse, ref:o.ref, to:"study"}));
+    if(p.greek != null || /^G\d+$/.test(p.strongs || s)){
+      r.data = {s: p.strongs || s, h: p.greek || "", t: null, g: p.gloss || "",
+        gr: p.lemma ? `lemma: ${p.lemma}` : "", greek: true,
+        lxxOcc: p.lxx_occurrence_count ?? null, occ};
+    } else {
+      r.data = {s: p.strongs || s, h: p.hebrew || "", t: p.xlit ?? null, g: p.gloss || "", gr: p.morph || "", occ};
+    }
   }
   return r;
 }
@@ -574,6 +602,15 @@ function variantsHtml(vs){
 function wordCard(w, verseN, idx){
   const cid = `card-${esc(w.s)}-${verseN}-${idx}`;
   const trans = w.t ? `${esc(w.t)} · ${esc(w.s||"")}` : esc(w.s||"");
+  if(w.greek){
+    return `<div class="word-card" id="${cid}">
+    <div class="heb" lang="el">${esc(w.h)}</div>
+    <div class="tr">${trans}</div>
+    <div class="gloss">${esc(w.g)}</div>
+    <div class="grammar">${esc(w.gr)}${w.lemma ? ` · lemma: ${esc(w.lemma)}` : ""}</div>
+    ${renderingControls(w, "study")}
+  </div>`;
+  }
   return `<div class="word-card" id="${cid}">
     <div class="heb" lang="he" dir="rtl">${esc(w.h)}</div>
     <div class="tr">${trans}</div>
@@ -788,7 +825,7 @@ async function viewRead(){
   }).join("");
   return {sample, nav, html: bannerFor(sample) + `<h1>Read — ${esc(bookName(cur.book))} ${cur.ch} (King James base)</h1>
   <div class="read-text">${paras}</div>
-  <p class="note">Every word or phrase links to its Hebrew card, where a “See also” list shows where the same word is also used. Your rendering choices apply here too — Read defaults: your choice, then King James.</p>`};
+  <p class="note">Every word or phrase links to its ${cur.book >= 40 ? "Greek" : "Hebrew"} card, where a “See also” list shows where the same word is also used. Your rendering choices apply here too — Read defaults: your choice, then King James.</p>`};
 }
 /* Word-card links may carry the verse they were tapped in:
    #/word/<Strongs>/<book>/<chapter>/<verse>/<wordPos>. The context powers
@@ -851,10 +888,11 @@ async function viewWordPage(slug){
   }
   return {sample:r.sample, nav:"", html: bannerFor(r.sample) + strip + `<div class="wordpage">
     <div class="wcard">
-      <div class="heb-big" lang="he">${esc(w.h)}</div>
+      <div class="heb-big" lang="${w.greek ? "el" : "he"}">${esc(w.h)}</div>
       <div class="meta"><span class="tr">${esc(w.t||"")}</span><span class="snum">${esc(s)}</span></div>
       <div class="glossline">${esc(w.g)}</div>
       <div class="grammar">${esc(w.gr)}</div>
+      ${w.greek && w.lxxOcc != null ? `<div class="note">Also ${w.lxxOcc} times in the Septuagint.</div>` : ""}
       <div class="controls"><label>Your rendering</label>${renderingControls(pseudo, "study", true)}</div>
     </div>
     <div class="panel"><h3>Renderings</h3>
