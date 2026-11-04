@@ -570,7 +570,8 @@ function normVerse(p, b, c, n){
       notes.push({witness: "Greek witnesses", text: "The Byzantine text and the SBLGNT read the same text as the Textus Receptus here."});
   }
   if(tradNote) notes.push(tradNote);
-  return {live:true, book:b, ch:c, n: p.verse ?? n, words, sent, greek, notes};
+  return {live:true, book:b, ch:c, n: p.verse ?? n, words, sent, greek, notes,
+    yltText: p.ylt_text || null};
 }
 async function getVerse(b, c, v){
   const r = await fromApi(`/api/verse/${b}/${c}/${v}`, ()=>sampleVerse(b, c, v));
@@ -745,7 +746,67 @@ function liveWordsHtml(v, ctx, link){
 }
 function studySentence(v){
   const cap = `<span class="cap">Your translation — Young's (computed) base, your choices applied</span><br>`;
-  if(v.live) return cap + liveWordsHtml(v, "study", false);
+  if(v.live){
+    /* Kit's ruling (2026-11-03): the Study sentence in English order
+       with the reader's choices applied. Primary construction: the
+       verse's actual Young's text (English order by construction),
+       with each word's own Young's phrase replaced by the reader's
+       rendering where they differ — the sample path's substitution
+       method, on the real text. (The kjv_sentence span construction
+       was tried first and breaks on verses whose automatic alignment
+       anchors are noisy: folded neighbour words get replaced by the
+       anchor word's phrase.) Words with no Young's phrase keep
+       Young's own wording in the sentence; their frames still show
+       the choice. No Young's text -> kjv_sentence spans; no sentence
+       at all (non-TR Greek tradition) -> chain the frames. */
+    if(v.yltText && !(v.words[0] && v.words[0].trad)){
+      const subs = [];
+      const used = [];
+      v.words.forEach((w, i) => {
+        if(!w.ylt) return;
+        const eff = effective(w, "study");
+        if(eff == null || eff === "" || eff === w.ylt) return;
+        let from = 0, idx = -1;
+        while(true){
+          idx = v.yltText.indexOf(w.ylt, from);
+          if(idx < 0) break;
+          if(!used.some(([a, b2]) => idx < b2 && idx + w.ylt.length > a)) break;
+          from = idx + 1;
+        }
+        if(idx < 0) return;
+        used.push([idx, idx + w.ylt.length]);
+        subs.push({idx, len: w.ylt.length, eff, w, pos: i + 1});
+      });
+      subs.sort((a, b2) => a.idx - b2.idx);
+      let html = "", cursor = 0;
+      for(const s of subs){
+        html += esc(v.yltText.slice(cursor, s.idx));
+        html += s.w.s
+          ? `<a href="#/word/${esc(s.w.s)}/${v.book}/${v.ch}/${v.n}/${s.pos}">${esc(s.eff)}</a>`
+          : esc(s.eff);
+        cursor = s.idx + s.len;
+      }
+      html += esc(v.yltText.slice(cursor));
+      return cap + html;
+    }
+    if(v.sent && v.sent.length){
+      const parts = [];
+      for(const g of v.sent){
+        if(g.pos == null){
+          parts.push(g.supplied ? `<i>${esc(g.text)}</i>` : esc(g.text));
+          continue;
+        }
+        const w = v.words[g.pos-1];
+        if(!w){ parts.push(esc(g.text)); continue; }
+        const eff = effective(w, "study");
+        const shown = (eff === null) ? g.text : eff;
+        if(shown === "") continue;
+        parts.push(w.s ? `<a href="#/word/${esc(w.s)}/${v.book}/${v.ch}/${v.n}/${g.pos}">${esc(shown)}</a>` : esc(shown));
+      }
+      return cap + parts.join(" ");
+    }
+    return cap + liveWordsHtml(v, "study", false);
+  }
   const t = sampleAssemble(v, "yp");
   return t==null ? `<span class="note">Young's base text is not available for this verse.</span>` : cap + esc(t);
 }
