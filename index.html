@@ -649,13 +649,13 @@ function normVerse(p, b, c, n){
     if(Array.isArray(alt) && alt.length){
       words = alt.map(w=>({
         wid: null, s: w.strongs || null, h: w.greek || "", t: w.translit ?? null,
-        g: w.gloss || "", gr: w.morph || "", kjv: null, ylt: null,
+        g: w.gloss || "", gr: w.morph || "", kjv: w.kjv ?? null, ylt: w.ylt ?? null,
         supplied: false, variants: null, lemma: w.lemma || null,
         greek: true, trad: dk
       }));
       sent = [];
       tradNote = {witness: dk === "byz" ? "Byzantine text" : "SBLGNT",
-        text: "The word frames show this tradition's text (assembled from word data). KJV and computed Young's phrases are anchored to the Textus Receptus, so this tradition's frames build from the glosses."};
+        text: "The word frames show this tradition's text (assembled from word data), and the King James and computed Young's phrases are this tradition's own, carried by its alignment bridge to the Textus Receptus."};
     }
   }
   const notes = arr(p.witnesses).map(x=>({witness:x.witness, text:x.note || x.text || ""}));
@@ -867,9 +867,13 @@ function sampleAssemble(v, kind){
 /* Live verses: word by word, supplied words italic, untranslated words skipped. */
 function liveWordsHtml(v, ctx, link){
   const parts = [];
+  let prev = null, prevChoice = false;
   for(const w of v.words){
     const r = effective(w, ctx);
     if(r===null) continue;
+    const chosen = !!store.get(w.s);
+    if(r === prev && !chosen && !prevChoice) continue;
+    prev = r; prevChoice = chosen;
     let piece = esc(r);
     if(w.supplied) piece = `<i>${piece}</i>`;
     parts.push(link && w.s ? `<a href="#/word/${esc(w.s)}">${piece}</a>` : piece);
@@ -894,7 +898,7 @@ function studySentence(v){
       if(v.sent && v.sent.length) return cap + kjvBaseHtml(v, "study");
       if(v.yltText) return cap + yltSubstHtml(v, "study");
     }
-    return cap + liveWordsHtml(v, "study", false);
+    return cap + liveWordsHtml(v, base === "kjv" ? "read" : "study", false);
   }
   const cap = `<span class="cap">Your translation — Young's (computed) base, your choices applied</span><br>`;
   const t = sampleAssemble(v, "yp");
