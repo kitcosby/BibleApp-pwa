@@ -13,16 +13,19 @@ flowchart LR
     E1["Reader (phone or desktop browser)"]
     E2["Static file host"]
     E3["bible-project JSON API (Lampy host)"]
+    E4["Google Fonts (fonts.googleapis.com)"]
     P0("BibleApp-pwa (BYOT) system")
     E1 -->|"install and navigation requests (HTTPS)"| P0
     E2 -->|"app shell files (index.html, manifest, sw.js, icons)"| P0
     P0 -->|"app pages and offline-capable shell"| E1
     P0 -->|"read-only JSON API requests (GET /api/books, /api/chapters, /api/verses, /api/verse, /api/chapter, /api/word, /api/search)"| E3
     E3 -->|"JSON verse, word, and search payloads"| P0
+    P0 -->|"font stylesheet request (Frank Ruhl Libre, Inter)"| E4
+    E4 -->|"font stylesheet"| P0
     P0 -->|"rendered Study, Read, Word, Search, and About views"| E1
 ```
 
-The static host is inside the delivery path only: it serves the shell once (and on updates); after the service worker registers, repeat visits are served from the shell cache. The system boundary is the app as delivered to the browser (page + service worker + browser storage); the API and its database are outside it.
+The static host is inside the delivery path only: it serves the shell once (and on updates); after the service worker registers, repeat visits are served from the shell cache. The system boundary is the app as delivered to the browser (page + service worker + browser storage); the API and its database are outside it. The only other third-party runtime fetch is the Google Fonts stylesheet linked in the page head (Frank Ruhl Libre for headings, Inter for body).
 
 ## 2. Level-1 data flow diagram
 
@@ -45,7 +48,7 @@ flowchart LR
     D4[("D4 Variant defaults and per-word overrides (localStorage byotVariantDefaults, byotVariantWords)")]
     D5[("D5 Base-text toggle (localStorage byotBase)")]
     D6[("D6 Pending search query (sessionStorage byotPendingQuery)")]
-    D7[("D7 In-memory API memo (successful responses only)")]
+    D7[("D7 In-memory API memo and Study verse cache")]
     D8[("D8 Built-in sample corpus (Genesis 1:1-5, inside index.html)")]
     E1 -->|"first visit and update requests"| P1
     E2 -->|"shell files"| P1
@@ -58,6 +61,7 @@ flowchart LR
     D2 -->|"cached JSON responses offline"| P2
     P2 -->|"successful responses memoized"| D7
     D7 -->|"memoized payloads"| P4
+    P4 -->|"verses shown in Study cached by verse number"| D7
     P2 -->|"unreachable or non-JSON response"| P8
     P8 -->|"sample books, verses, and words"| D8
     D8 -->|"labeled sample payloads"| P4
@@ -147,7 +151,7 @@ Notes on the ERD: Web Storage keys are JSON objects, not tables — `byotChoices
 
 - OBSERVED (README.md): one static page (`index.html` — "the whole app (data, routes, styles, script)"), installable PWA for iPhone/Android, no build step, any static host incl. subpath; HTTPS or localhost required for install/offline; viewed verses are kept in the phone's cache and reopen offline; rendering choices are saved on the phone (localStorage). README's file list names `manifest.webmanifest` and `sw.js` (its cache names there — `byot-v2` / `byot-api-v2` — are stale against the code at HEAD; see the sw.js bullet).
 - OBSERVED (README.md, "Live data"): the app reads the Bible database only through the read-only GET JSON API on the same host as the app, base path constant `API_BASE` default `/bible`; endpoints used: `/api/books`, `/api/chapters/<book>`, `/api/verses/<book>/<chapter>`, `/api/verse/<book>/<chapter>/<verse>`, `/api/chapter/<book>/<chapter>`, `/api/word/<Strong's>`, `/api/search?q=<text>`; fallback rules as drawn in 2.0/8.0 (sample is Genesis 1:1–5 only; JSON 404 = not found, no sample; successes kept in memory; 30 s retry cooldown). The README's single-base description is superseded in detail by the `API_BASES` probe list observed in `index.html` at HEAD (three bases, session-sticky).
-- OBSERVED (`index.html` at HEAD `d915f4ac`): the `API_BASES` array and probe/sticky/timeout/cooldown/memo rules quoted in the process grounding; the six view functions (`viewHome`, `viewStudy`, `viewRead`, `viewWord`, `viewSearch`, `viewAbout`); the choice store (`byotChoices`; `effective()` defaults: Read → KJV, Study → Young's; custom mode returns the stored text); variant stores (`byotVariantDefaults`, `byotVariantWords`); base toggle store (`byotBase`, sticky per view); search hand-off (`byotPendingQuery`, sessionStorage); service-worker registration of `sw.js` on load; the sample fallback block ("SAMPLE FALLBACK (Genesis 1:1–5 only)"); OT traditions named in code (Masoretic base, Samaritan Pentateuch witness "SP", DSS); NT variant frames consumed from `greek_words_variants` with per-tradition bridge phrases and "verse not present in this tradition" notes; footer text following the data state.
+- OBSERVED (`index.html` at HEAD `d915f4ac`): the `API_BASES` array and probe/sticky/timeout/cooldown/memo rules quoted in the process grounding; the six view functions (`viewHome`, `viewStudy`, `viewRead`, `viewWord`, `viewSearch`, `viewAbout`); the choice store (`byotChoices`; `effective()` defaults: Read → KJV, Study → Young's; custom mode returns the stored text); variant stores (`byotVariantDefaults`, `byotVariantWords`); base toggle store (`byotBase`, sticky per view); search hand-off (`byotPendingQuery`, sessionStorage); service-worker registration of `sw.js` on load; the sample fallback block ("SAMPLE FALLBACK (Genesis 1:1–5 only)"); OT traditions named in code (Masoretic base, Samaritan Pentateuch witness "SP", DSS); NT variant frames consumed from `greek_words_variants` with per-tradition bridge phrases and "verse not present in this tradition" notes; footer text following the data state; the Google Fonts stylesheet link in the page head (Frank Ruhl Libre 400/500/700, Inter 400/500/600); the in-memory `verseCache` Map keyed `"v<n>"` holding verses shown in Study.
 - OBSERVED (`sw.js` at HEAD): shell cache `CACHE = "byot-v16"`, API cache `API_CACHE = "byot-api-v2"`, `KEEP = [CACHE, API_CACHE]`; shell precache list (`./`, `index.html`, `manifest.webmanifest`, `icon-180.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`); API paths (pathname containing `/api/`) get stale-while-revalidate with only successful JSON cached and a plain-text 503 when offline with no cache; shell URLs cache-first; everything else network-first with cache fallback (successful and opaque responses kept).
 - OBSERVED (`manifest.webmanifest` at HEAD): name "Build Your Own Translation", short_name "BYOT", `start_url`/`scope`/`id` relative (`.` / `./`), display `standalone`, orientation `portrait`, theme `#2B2118`, background `#FFFCF0`, four icons (192/512 any, 512 maskable, 180).
 - OBSERVED (commit history, 2026-11-03/04/07): repo created 2026-11-03 from the round-4 prototype (492eab6b) with manifest/icons/SW byot-v1; live API client + sample fallback (8d8bf974); dual-base probe (e7b62455 — the third, same-host base is in the HEAD code); NT client with 66-book canon and G-number cards (222c9dda, 35b979a6); default-variant dropdowns sticky per testament + per-word overrides (b16f0e30); Study sentence rebuilt in English order and KJV/Young's base toggle sticky per view (3ea56403, 7e90d722); word-page Renderings panel from the API's corpus-wide phrase lists (97c55fe2); About tab with repo and license roll (bf5075b3); variant traditions speaking with their own bridge phrases (d915f4ac, 2026-11-07, HEAD).
