@@ -24,10 +24,10 @@ The app opens offline. Verses you have viewed while online are kept in the phone
 - `index.html` — the app (data, routes, styles, script)
 - `config.js` — deployment-specific core API base URL (defaults to same-origin `/bible`)
 - `manifest.webmanifest` — app name, colors, icons
-- `sw.js` — service worker (cache `byot-v17`): the app shell and `config.js` are cached; database API responses use stale-while-revalidate (`byot-api-v2`); only successful JSON is cached
+- `sw.js` — service worker (cache `byot-v17`): the app shell is cached; `config.js` is refreshed network-first (cached fallback offline); database API responses use stale-while-revalidate (`byot-api-v2`); only successful JSON is cached
 - `icon-180.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png` — app icons
 
-## Live data (Lampy database API)
+## Live data (core API)
 
 The app reads the Bible database only through a read-only JSON API (GET only). Set `window.BIBLEAPP_API_BASE` in `config.js` to the API base URL, without a trailing slash. The default is `/bible`, so a same-origin deployment calls `/bible/api/...`. For a portable deployment, set this value to the chosen core API origin/path. The client uses exactly this configured base; it no longer probes or falls back to hard-coded Lampy addresses. The API must permit the static app's origin through its CORS policy when hosted cross-origin.
 
