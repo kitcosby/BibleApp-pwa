@@ -72,6 +72,21 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Deployment config is network-first so a host can change its API origin
+  // without leaving installed clients pinned to a stale cached config.js.
+  const configUrl = new URL("config.js", scopeRoot).href;
+  if (url.href === configUrl) {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res.ok) caches.open(CACHE).then((c) => c.put(req, res.clone()));
+          return res;
+        })
+        .catch(() => caches.open(CACHE).then((c) => c.match(req)))
+    );
+    return;
+  }
+
   // The scope root and a navigation to it both mean the app page.
   const key = req.mode === "navigate" && url.href.startsWith(scopeRoot) && !url.search
     ? new URL("index.html", scopeRoot).href
