@@ -35,7 +35,7 @@ flowchart LR
     E2["Static file host"]
     E3["bible-project JSON API (Lampy host)"]
     P1("1.0 Register service worker and cache app shell")
-    P2("2.0 Probe API bases and fetch JSON payloads")
+    P2("2.0 Fetch JSON payloads from the configured core API base")
     P3("3.0 Render Home table of contents")
     P4("4.0 Build Study sentence from word frames")
     P5("5.0 Render Read view")
