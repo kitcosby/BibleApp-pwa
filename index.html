@@ -13,6 +13,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="config.js"></script>
 <style>
 :root{
   --parchment:#FFFCF0; --papyrus:#E8D5A3; --bronze:#B89B5E; --gold:#8C6D2F;
@@ -453,22 +454,16 @@ function esc(s){
 function arr(x){ return Array.isArray(x) ? x : []; }
 
 /* ============ API (read-only GET) ============
-   The Lampy database is reached only through this JSON API. API_BASES names
-   the routes in probe order: the public funnel, the tailnet address, then a
-   same-host relative path (the app served from Lampy itself). All three
-   reach the same API. A base that answers keeps the session (apiBaseIdx);
-   a base that fails hands over to the next.
-   Rules: non-JSON (incl. an HTML 404 from a static server) = unreachable;
-   JSON {"error":"not found"} with 404 = not found, no fallback. Only successful
-   results are memoized; after a failure, calls wait API_COOLDOWN_MS. */
-const API_BASES = ["https://laptop.taila7a335.ts.net:8443/bible",
-                   "https://laptop.taila7a335.ts.net/bible",
-                   "/bible"];
+   The core API base is deployment-configured in config.js. No Lampy
+   hostname or network fallback list is embedded in this client.
+   Rules: non-JSON responses are unreachable; JSON {"error":"not found"}
+   with 404 is authoritative. Only successful results are memoized. */
+const API_BASE = String(window.BIBLEAPP_API_BASE || "/bible").replace(/\/+$/, "");
 const API_TIMEOUT_MS = 8000;
 const API_COOLDOWN_MS = 30000;
 const apiDownUntil = new Map();   // path -> time when it may be tried again
 const apiMemo = new Map();
-let apiBaseIdx = 0;               // base that last answered; session-sticky
+// API base is deployment configuration, not a probe/fallback list.
 async function apiTry(base, path){
   const ctrl = new AbortController();
   const timer = setTimeout(()=>ctrl.abort(), API_TIMEOUT_MS);
@@ -489,16 +484,12 @@ async function apiTry(base, path){
 async function apiGet(path){
   if(apiMemo.has(path)) return {ok:true, data:apiMemo.get(path)};
   if(Date.now() < (apiDownUntil.get(path) || 0)) return {ok:false, reason:"down"};
-  for(let k=0; k<API_BASES.length; k++){
-    const i = (apiBaseIdx + k) % API_BASES.length;
-    const r = await apiTry(API_BASES[i], path);
-    if(r.ok){
-      apiBaseIdx = i;
-      apiMemo.set(path, r.data);
-      return r;
-    }
-    if(r.reason==="notfound") return r;   // the API's own answer; authoritative
+  const r = await apiTry(API_BASE, path);
+  if(r.ok){
+    apiMemo.set(path, r.data);
+    return r;
   }
+  if(r.reason==="notfound") return r;   // the API's own answer; authoritative
   apiDownUntil.set(path, Date.now()+API_COOLDOWN_MS);
   return {ok:false, reason:"down"};
 }
