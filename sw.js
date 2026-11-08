@@ -5,12 +5,13 @@
 //   Only successful JSON responses are cached. With no cache and no network: 503.
 // - Everything else: network-first, with cache fallback.
 // Paths are resolved against the worker's scope, so the app works from any subpath.
-const CACHE = "byot-v16";
+const CACHE = "byot-v17";
 const API_CACHE = "byot-api-v2";
 const KEEP = [CACHE, API_CACHE];
 const SHELL = [
   "./",
   "index.html",
+  "config.js",
   "manifest.webmanifest",
   "icon-180.png",
   "icon-192.png",
@@ -68,6 +69,21 @@ self.addEventListener("fetch", (event) => {
 
   if (isApi(url)) {
     event.respondWith(apiResponse(event, req));
+    return;
+  }
+
+  // Deployment config is network-first so a host can change its API origin
+  // without leaving installed clients pinned to a stale cached config.js.
+  const configUrl = new URL("config.js", scopeRoot).href;
+  if (url.href === configUrl) {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res.ok) caches.open(CACHE).then((c) => c.put(req, res.clone()));
+          return res;
+        })
+        .catch(() => caches.open(CACHE).then((c) => c.match(req)))
+    );
     return;
   }
 
