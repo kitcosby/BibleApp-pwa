@@ -2,7 +2,7 @@ Living document — update these diagrams when adding features.
 
 # BibleApp-pwa — Architecture
 
-**Build Your Own Translation (BYOT)** as an installable progressive web app: one static page (`index.html` — data, routes, styles, and script in a single file), a web app manifest, and a service worker. No build step and no server code of its own: any static host can serve the folder, including from a subpath. It is the reader client of the **bible-project** corpus: all Bible data arrives through bible-project's read-only JSON API (see bible-project's `docs/architecture.md`, Phase 3 API). This document was created in the 2026-11-07 diagram-maintenance run — the first architecture doc for this repo (created 2026-11-03; HEAD at writing `d915f4ac`, service-worker cache `byot-v16`).
+**Build Your Own Translation (BYOT)** as an installable progressive web app: one static page (`index.html` — data, routes, styles, and script in a single file), a web app manifest, and a service worker. No build step and no server code of its own: any static host can serve the folder, including from a subpath. It is the reader client of the **bible-project** corpus: all Bible data arrives through bible-project's read-only JSON API (see bible-project's `docs/architecture.md`, Phase 3 API). This document was created in the 2026-11-07 diagram-maintenance run — the first architecture doc for this repo (created 2026-11-03; HEAD at writing `d915f4ac`, service-worker cache `byot-v17`).
 
 The app has six views — Home (table of contents), Study (build-a-translation sentence), Read, Word (word card), Search, and About — covering the 66-book canon (OT 39 / NT 27, KJV order). Hebrew-track verses are built from the API's word frames; Greek-track (NT) verses from its `greek_words` frames, with Byzantine/SBLGNT variant frames swapped in when the reader's default tradition is not TR. When the API is unreachable the app falls back to a **labeled built-in sample (Genesis 1:1–5 only)** — nothing is invented beyond it — and the footer follows the data state (sample notice only while sample data is on screen; "Connected to the Bible database." when live).
 
@@ -55,7 +55,7 @@ flowchart LR
     P1 -->|"shell files cached"| D1
     D1 -->|"shell files served offline"| P3
     E1 -->|"book, chapter, verse, word, and search requests"| P2
-    P2 -->|"GET requests in probe order (public funnel, tailnet, same-host)"| E3
+    P2 -->|"GET requests to the single configured API base"| E3
     E3 -->|"JSON payloads"| P2
     P2 -->|"successful JSON responses cached (stale-while-revalidate)"| D2
     D2 -->|"cached JSON responses offline"| P2
