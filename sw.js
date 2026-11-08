@@ -5,12 +5,13 @@
 //   Only successful JSON responses are cached. With no cache and no network: 503.
 // - Everything else: network-first, with cache fallback.
 // Paths are resolved against the worker's scope, so the app works from any subpath.
-const CACHE = "byot-v16";
+const CACHE = "byot-v17";
 const API_CACHE = "byot-api-v2";
 const KEEP = [CACHE, API_CACHE];
 const SHELL = [
   "./",
   "index.html",
+  "config.js",
   "manifest.webmanifest",
   "icon-180.png",
   "icon-192.png",
