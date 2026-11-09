@@ -1,8 +1,9 @@
 // BYOT service worker.
 // - App shell: cache-first (works offline after the first visit).
-// - Database API GETs (paths containing /api/): stale-while-revalidate. A verse
-//   viewed once reopens offline; the cache refreshes in the background.
-//   Only successful JSON responses are cached. With no cache and no network: 503.
+// - Public, anonymous database API GETs: stale-while-revalidate for offline reading.
+// - Auth/session endpoints and bearer-authenticated API requests: network-only,
+//   never cached or served from the shared API cache.
+// - Cache-Control: no-store responses are never cached.
 // - Everything else: network-first, with cache fallback.
 // Paths are resolved against the worker's scope, so the app works from any subpath.
 const CACHE = "byot-v18";
@@ -41,7 +42,7 @@ function isApi(url) {
 function isJson(res) {
   const type = res.headers.get("content-type") || "";
   const cacheControl = res.headers.get("cache-control") || "";
-  return res.ok && type.includes("json") && !/\\bno-store\\b/i.test(cacheControl);
+  return res.ok && type.includes("json") && !/\bno-store\b/i.test(cacheControl);
 }
 
 function isPrivateApiRequest(req, url) {
@@ -55,7 +56,7 @@ function isPrivateApiRequest(req, url) {
 async function apiResponse(event, req) {
   const cache = await caches.open(API_CACHE);
   let hit = await cache.match(req);
-  if (hit && /\\bno-store\\b/i.test(hit.headers.get("cache-control") || "")) {
+  if (hit && /\bno-store\b/i.test(hit.headers.get("cache-control") || "")) {
     await cache.delete(req);
     hit = null;
   }
