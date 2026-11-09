@@ -644,7 +644,7 @@ async function authoringOptionsForWord(word){
     options.push({label:"Other: "+other.text,text:other.text,source:3,optionId:Number(other.option_id)});
   return options.slice(0,255);
 }
-async function prepareAuthoringVerses(verses){
+async function prepareAuthoringVerses(verses, includeControls=true){
   if(!authState.user || !authoringState.activeId || Number(authoringState.activeId)<=2) return;
   if(!authoringState.detail || Number(authoringState.detail.translation.translation_id)!==Number(authoringState.activeId))
     await loadTranslationDetail(authoringState.activeId);
@@ -657,19 +657,22 @@ async function prepareAuthoringVerses(verses){
     if(!response.ok) throw new Error(data.error||"Could not load saved word choices");
     for(const row of arr(data.choices)) stored.set(Number(row.word_id),Number(row.choice));
   }
+  const needsOptions=words.filter(word=>includeControls||(stored.get(Number(word.wid))||0)>0);
   const optionsByWordId=new Map();
-  for(const word of words)
+  await Promise.all(needsOptions.map(async word=>{
     optionsByWordId.set(Number(word.wid),await authoringOptionsForWord(word));
+  }));
   for(const word of words){
-    const wid=Number(word.wid), options=optionsByWordId.get(wid)||[{label:"— default —",text:null,source:0,optionId:null}];
-    const storedChoice=stored.get(wid)||0;
+    const wid=Number(word.wid), storedChoice=stored.get(wid)||0;
+    const options=optionsByWordId.get(wid)||[{label:"— default —",text:null,source:0,optionId:null}];
     let selectedIndex=storedChoice;
     let rendering=storedChoice>0&&options[storedChoice]?options[storedChoice].text:null;
     if(!rendering){
       const ld=arr(authoringState.detail.lemmaDefaults).find(row=>row.lemma===word.s&&wid>=Number(row.from_word_id));
       if(ld){
         const found=options.findIndex((option,index)=>index>0&&option.text===ld.rendering);
-        if(found>0){selectedIndex=found;rendering=ld.rendering;}
+        if(found>0) selectedIndex=found;
+        rendering=ld.rendering;
       }
     }
     if(!options[selectedIndex]) selectedIndex=0;
@@ -1317,7 +1320,7 @@ async function viewRead(){
   if(!nums.length) return {sample, nav, html: bannerFor(sample) + errorBlock(emptyChapterMsg(sample))};
   if(!nums.includes(cur.v)) cur.v = nums[0];
   if(authState.user&&authoringState.activeId&&Number(authoringState.activeId)>2){
-    try{await prepareAuthoringVerses(verses);}
+    try{await prepareAuthoringVerses(verses,false);}
     catch(e){authoringState.message="Server translation unavailable; displaying browser-local choices instead. "+(e.message||"");}
   }
   const paras = verses.map(v=>{
