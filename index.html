@@ -442,10 +442,12 @@ function isUntranslated(s){ return typeof s==="string" && /^\(.*\)$/.test(s.trim
 function effective(w, ctx){
   if(authState.user&&authoringState.activeId&&Number(authoringState.activeId)>2&&w&&w.wid!=null){
     const saved=authoringState.byWordId.get(Number(w.wid));
-    if(saved&&saved.rendering) return saved.rendering;
-    const base=baseStore.get(ctx)==="kjv"?w.kjv:w.ylt;
-    const fallback=base==null||base===""?(w.g||""):base;
-    return isUntranslated(fallback)?null:fallback;
+    if(saved){
+      if(saved.rendering) return saved.rendering;
+      const base=baseStore.get(ctx)==="kjv"?w.kjv:w.ylt;
+      const fallback=base==null||base===""?(w.g||""):base;
+      return isUntranslated(fallback)?null:fallback;
+    }
   }
   const c=store.get(w.s);
   if(c&&c.mode==="custom") return c.text??"";
@@ -655,11 +657,11 @@ async function prepareAuthoringVerses(verses){
     if(!response.ok) throw new Error(data.error||"Could not load saved word choices");
     for(const row of arr(data.choices)) stored.set(Number(row.word_id),Number(row.choice));
   }
-  const phraseCache=new Map();
-  for(const word of words) if(!phraseCache.has(word.s))
-    phraseCache.set(word.s,await authoringOptionsForWord(word));
+  const optionsByWordId=new Map();
+  for(const word of words)
+    optionsByWordId.set(Number(word.wid),await authoringOptionsForWord(word));
   for(const word of words){
-    const wid=Number(word.wid), options=phraseCache.get(word.s)||[{label:"— default —",text:null,source:0,optionId:null}];
+    const wid=Number(word.wid), options=optionsByWordId.get(wid)||[{label:"— default —",text:null,source:0,optionId:null}];
     const storedChoice=stored.get(wid)||0;
     let selectedIndex=storedChoice;
     let rendering=storedChoice>0&&options[storedChoice]?options[storedChoice].text:null;
@@ -1283,8 +1285,9 @@ async function viewStudy(){
   }
   verseCache.set("v"+v.n, v);
   const hasWords = v.words && v.words.length;
+  const authoringNotice=authoringState.message?`<p class="banner" role="status">${esc(authoringState.message)}</p>`:"";
   const body = hasWords
-    ? `<div class="word-row">${v.words.map((w,k)=>wordCard(w, v.n, k)).join("")}</div>
+    ? authoringNotice+`<div class="word-row">${v.words.map((w,k)=>wordCard(w, v.n, k)).join("")}</div>
        <div class="sentence">${studySentence(v)}</div>`
     : `<p class="note">Word-level data is not available for this verse. Read shows its text.</p>`;
   const ref = `${esc(bookName(cur.book))} ${cur.ch}:${v.n}`;
@@ -1322,7 +1325,8 @@ async function viewRead(){
     return `<p id="rv${v.n}"><span class="vn">${v.n}</span>${html ||
       `<span class="note">Text not available for this verse.</span>`}</p>`;
   }).join("");
-  return {sample, nav, html: bannerFor(sample) + `<h1>Read — ${esc(bookName(cur.book))} ${cur.ch} (${baseStore.get("read") === "ylt" ? "Young's" : "King James"} base)</h1>
+  const authoringNotice=authoringState.message?`<p class="banner" role="status">${esc(authoringState.message)}</p>`:"";
+  return {sample, nav, html: bannerFor(sample) + authoringNotice + `<h1>Read — ${esc(bookName(cur.book))} ${cur.ch} (${baseStore.get("read") === "ylt" ? "Young's" : "King James"} base)</h1>
   ${defaultVariantHtml(cur.book >= 40 ? "NT" : "OT")} ${baseToggleHtml("read")}
   <div class="read-text">${paras}</div>
   <p class="note">Every word or phrase links to its ${cur.book >= 40 ? "Greek" : "Hebrew"} card, where a “See also” list shows where the same word is also used. Your rendering choices apply here too — Read defaults: your choice, then ${baseStore.get("read") === "ylt" ? "Young's" : "King James"}.</p>`};
