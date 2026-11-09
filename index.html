@@ -635,8 +635,8 @@ function authoringPhraseOptions(phrases,here,source,prefix){
   for(const phrase of arr(phrases)) if(phrase && phrase!==here) ordered.push(phrase);
   return ordered.slice(0,12).map(text=>({label:prefix+": "+text,text,source,optionId:null}));
 }
-async function authoringOptionsForWord(word){
-  const page=await getWordPage(word.s), data=page&&page.data?page.data:{};
+function authoringOptionsForWord(word, data){
+  data=data||{};
   const options=[{label:"— default —",text:null,source:0,optionId:null}];
   options.push(...authoringPhraseOptions(data.kjvList,word.kjv,1,"KJV"));
   options.push(...authoringPhraseOptions(data.yltList,word.ylt,2,"Young's"));
@@ -658,10 +658,14 @@ async function prepareAuthoringVerses(verses, includeControls=true){
     for(const row of arr(data.choices)) stored.set(Number(row.word_id),Number(row.choice));
   }
   const needsOptions=words.filter(word=>includeControls||(stored.get(Number(word.wid))||0)>0);
-  const optionsByWordId=new Map();
-  await Promise.all(needsOptions.map(async word=>{
-    optionsByWordId.set(Number(word.wid),await authoringOptionsForWord(word));
+  const lexiconByStrong=new Map();
+  await Promise.all([...new Set(needsOptions.map(word=>word.s))].map(async strongs=>{
+    const page=await getWordPage(strongs);
+    lexiconByStrong.set(strongs,page&&page.data?page.data:{});
   }));
+  const optionsByWordId=new Map();
+  for(const word of needsOptions)
+    optionsByWordId.set(Number(word.wid),authoringOptionsForWord(word,lexiconByStrong.get(word.s)));
   for(const word of words){
     const wid=Number(word.wid), storedChoice=stored.get(wid)||0;
     const options=optionsByWordId.get(wid)||[{label:"— default —",text:null,source:0,optionId:null}];
