@@ -469,23 +469,28 @@ const authState = {
 let authMessage = "";
 
 async function refreshAuthState(){
+  let data;
   try{
     const response = await fetch(AUTH_BASE + "/api/auth/bootstrap", {
       method:"GET", credentials:"include", cache:"no-store",
       headers:{Accept:"application/json"}
     });
-    const data = await response.json();
+    data = await response.json();
     if(!response.ok) throw new Error(data.error || "Authentication service unavailable");
-    authState.csrfToken = data.csrf_token || null;
-    authState.user = data.authenticated ? data.user : null;
-    authState.accessToken = null;
-    authState.tokenExpiresAt = 0;
-    if(authState.user) await exchangeIdentityToken();
   }catch(e){
     authState.csrfToken = null;
     authState.user = null;
     authState.accessToken = null;
     authState.tokenExpiresAt = 0;
+    return;
+  }
+  authState.csrfToken = data.csrf_token || null;
+  authState.user = data.authenticated ? data.user : null;
+  authState.accessToken = null;
+  authState.tokenExpiresAt = 0;
+  if(authState.user){
+    try{ await exchangeIdentityToken(); }
+    catch(e){ authMessage = e && e.message ? e.message : "API identity exchange unavailable."; }
   }
 }
 
