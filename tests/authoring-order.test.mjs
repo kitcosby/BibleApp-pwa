@@ -82,8 +82,7 @@ test("an available lemma-default phrase selects its existing dropdown index", ()
     arr: value => Array.isArray(value) ? value : [],
     authoringState: { detail: { otherOptions: [] } },
   };
-  const end = html.indexOf("\\nasync function prepareAuthoringVerses", start);
-  runInNewContext(html.slice(start, end), context);
+  runInNewContext(helperSource, context);
   const options = context.authoringOptionsForWord(
     { kjv: "current KJV", ylt: "current Young" },
     { kjv_phrases: ["current KJV", "saved phrase"], ylt_phrases: [] },
