@@ -657,7 +657,13 @@ async function prepareAuthoringVerses(verses, includeControls=true){
     if(!response.ok) throw new Error(data.error||"Could not load saved word choices");
     for(const row of arr(data.choices)) stored.set(Number(row.word_id),Number(row.choice));
   }
-  const needsOptions=words.filter(word=>includeControls||(stored.get(Number(word.wid))||0)>0);
+  const needsOptions=words.filter(word=>{
+    const wid=Number(word.wid);
+    const hasExplicit=(stored.get(wid)||0)>0;
+    const hasLemmaDefault=arr(authoringState.detail.lemmaDefaults).some(row=>
+      row.lemma===word.s&&wid>=Number(row.from_word_id));
+    return includeControls||hasExplicit||hasLemmaDefault;
+  });
   const lexiconByStrong=new Map();
   await Promise.all([...new Set(needsOptions.map(word=>word.s))].map(async strongs=>{
     const page=await getWordPage(strongs);
@@ -677,8 +683,7 @@ async function prepareAuthoringVerses(verses, includeControls=true){
       const ld=arr(authoringState.detail.lemmaDefaults).find(row=>row.lemma===word.s&&wid>=Number(row.from_word_id));
       if(ld){
         const found=options.findIndex((option,index)=>index>0&&option.text===ld.rendering);
-        if(found>0) selectedIndex=found;
-        rendering=ld.rendering;
+        if(found>0){selectedIndex=found;rendering=ld.rendering;}
       }
     }
     if(!options[selectedIndex]) selectedIndex=0;
