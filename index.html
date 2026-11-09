@@ -648,39 +648,52 @@ async function prepareAuthoringVerses(verses, includeControls=true){
   if(!authState.user || !authoringState.activeId || Number(authoringState.activeId)<=2) return;
   if(!authoringState.detail || Number(authoringState.detail.translation.translation_id)!==Number(authoringState.activeId))
     await loadTranslationDetail(authoringState.activeId);
-  const words=arr(verses).flatMap(v=>arr(v.words)).filter(w=>w&&Number.isSafeInteger(Number(w.wid))&&Number(w.wid)>0&&w.s);
-  const ids=[...new Set(words.map(w=>Number(w.wid)))], stored=new Map();
+  const words=arr(verses).flatMap(v=>arr(v.words))
+    .filter(w=>w&&Number.isSafeInteger(Number(w.wid))&&Number(w.wid)>0);
+  const ids=[...new Set(words.map(w=>Number(w.wid)))], stored=new Map(), corpusById=new Map();
   for(let i=0;i<ids.length;i+=100){
     const batch=ids.slice(i,i+100);
-    const response=await apiAuthoringFetch("/bible/translations/"+authoringState.activeId+"/choices?wordIds="+batch.join(","));
-    const data=await response.json().catch(()=>({}));
-    if(!response.ok) throw new Error(data.error||"Could not load saved word choices");
-    for(const row of arr(data.choices)) stored.set(Number(row.word_id),Number(row.choice));
+    const choicesResponse=await apiAuthoringFetch(
+      "/bible/translations/"+authoringState.activeId+"/choices?wordIds="+batch.join(",")
+    );
+    const choicesData=await choicesResponse.json().catch(()=>({}));
+    if(!choicesResponse.ok) throw new Error(choicesData.error||"Could not load saved word choices");
+    for(const row of arr(choicesData.choices)) stored.set(Number(row.word_id),Number(row.choice));
+
+    // Choice bytes are positional. Fetch the matching phrase lists directly
+    // from Flask without browser/service-worker cache so stale option ordering
+    // can never cause a different rendering to be saved.
+    const corpusResponse=await fetch(
+      API_BASE+"/api/word-options?wordIds="+batch.join(","),
+      {method:"GET",cache:"no-store",headers:{Accept:"application/json"}}
+    );
+    const corpusData=await corpusResponse.json().catch(()=>({}));
+    if(!corpusResponse.ok||!Array.isArray(corpusData.words))
+      throw new Error(corpusData.error||"Live corpus phrase data is unavailable");
+    for(const row of corpusData.words) corpusById.set(Number(row.wid),row);
   }
+  for(const wid of ids)
+    if(!corpusById.has(wid)) throw new Error("A requested Hebrew word is missing from the live corpus.");
+
   const needsOptions=words.filter(word=>{
-    const wid=Number(word.wid);
+    const wid=Number(word.wid), corpus=corpusById.get(wid);
     const hasExplicit=(stored.get(wid)||0)>0;
     const hasLemmaDefault=arr(authoringState.detail.lemmaDefaults).some(row=>
-      row.lemma===word.s&&wid>=Number(row.from_word_id));
+      row.lemma===corpus.lemma&&wid>=Number(row.from_word_id));
     return includeControls||hasExplicit||hasLemmaDefault;
   });
-  const lexiconByStrong=new Map();
-  await Promise.all([...new Set(needsOptions.map(word=>word.s))].map(async strongs=>{
-    const page=await getWordPage(strongs);
-    if(!page||page.sample||!page.data)
-      throw new Error("Live corpus phrase data is required to preserve the saved choice order.");
-    lexiconByStrong.set(strongs,page.data);
-  }));
   const optionsByWordId=new Map();
   for(const word of needsOptions)
-    optionsByWordId.set(Number(word.wid),authoringOptionsForWord(word,lexiconByStrong.get(word.s)));
+    optionsByWordId.set(Number(word.wid),authoringOptionsForWord(word,corpusById.get(Number(word.wid))));
   for(const word of words){
-    const wid=Number(word.wid), storedChoice=stored.get(wid)||0;
+    const wid=Number(word.wid), corpus=corpusById.get(wid), savedWord={...word,lemmaKey:corpus.lemma};
+    const storedChoice=stored.get(wid)||0;
     const options=optionsByWordId.get(wid)||[{label:"— default —",text:null,source:0,optionId:null}];
     let selectedIndex=storedChoice;
     let rendering=storedChoice>0&&options[storedChoice]?options[storedChoice].text:null;
     if(!rendering){
-      const ld=arr(authoringState.detail.lemmaDefaults).find(row=>row.lemma===word.s&&wid>=Number(row.from_word_id));
+      const ld=arr(authoringState.detail.lemmaDefaults).find(row=>
+        row.lemma===savedWord.lemmaKey&&wid>=Number(row.from_word_id));
       if(ld){
         const found=options.findIndex((option,index)=>index>0&&option.text===ld.rendering);
         if(found>0){selectedIndex=found;rendering=ld.rendering;}
@@ -688,7 +701,7 @@ async function prepareAuthoringVerses(verses, includeControls=true){
     }
     if(!options[selectedIndex]) selectedIndex=0;
     authoringState.byWordId.set(wid,{options,choiceIndex:selectedIndex,storedChoice,rendering});
-    authoringState.wordsById.set(wid,word);
+    authoringState.wordsById.set(wid,savedWord);
   }
 }
 async function saveAuthoringChoice(select){
@@ -699,8 +712,8 @@ async function saveAuthoringChoice(select){
   const payload={choice};
   if(choice>0){
     const option=entry.options[choice];
-    if(!word.s||!option||!option.text) throw new Error("This word cannot be saved with the current corpus data.");
-    payload.lemmaDefault={lemma:word.s,rendering:option.text,fromWordId:wid,source:option.source,otherOptionId:option.optionId};
+    if(!word.lemmaKey||!option||!option.text) throw new Error("This word cannot be saved with the current corpus data.");
+    payload.lemmaDefault={lemma:word.lemmaKey,rendering:option.text,fromWordId:wid,source:option.source,otherOptionId:option.optionId};
   }
   const response=await apiAuthoringFetch("/bible/translations/"+authoringState.activeId+"/choices/"+wid,{
     method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)
