@@ -638,8 +638,8 @@ function authoringPhraseOptions(phrases,here,source,prefix){
 function authoringOptionsForWord(word, data){
   data=data||{};
   const options=[{label:"— default —",text:null,source:0,optionId:null}];
-  options.push(...authoringPhraseOptions(data.kjvList,word.kjv,1,"KJV"));
-  options.push(...authoringPhraseOptions(data.yltList,word.ylt,2,"Young's"));
+  options.push(...authoringPhraseOptions(data.kjv_phrases,word.kjv,1,"KJV"));
+  options.push(...authoringPhraseOptions(data.ylt_phrases,word.ylt,2,"Young's"));
   for(const other of arr(authoringState.detail&&authoringState.detail.otherOptions))
     options.push({label:"Other: "+other.text,text:other.text,source:3,optionId:Number(other.option_id)});
   return options.slice(0,255);
