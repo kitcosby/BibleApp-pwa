@@ -644,6 +644,19 @@ function authoringOptionsForWord(word, data){
     options.push({label:"Other: "+other.text,text:other.text,source:3,optionId:Number(other.option_id)});
   return options.slice(0,255);
 }
+function authoringSelection(options, storedChoice, lemmaDefault){
+  let selectedIndex=storedChoice;
+  let rendering=storedChoice>0&&options[storedChoice]?options[storedChoice].text:null;
+  if(!rendering&&lemmaDefault){
+    // A lemma default remains authoritative even if corpus frequency changes
+    // move its phrase outside the current top-12 shortlist.
+    const found=options.findIndex((option,index)=>index>0&&option.text===lemmaDefault.rendering);
+    if(found>0) selectedIndex=found;
+    rendering=lemmaDefault.rendering;
+  }
+  if(!options[selectedIndex]) selectedIndex=0;
+  return {choiceIndex:selectedIndex,rendering};
+}
 async function prepareAuthoringVerses(verses, includeControls=true){
   if(!authState.user || !authoringState.activeId || Number(authoringState.activeId)<=2) return;
   if(!authoringState.detail || Number(authoringState.detail.translation.translation_id)!==Number(authoringState.activeId))
@@ -689,22 +702,10 @@ async function prepareAuthoringVerses(verses, includeControls=true){
     const wid=Number(word.wid), corpus=corpusById.get(wid), savedWord={...word,lemmaKey:corpus.lemma};
     const storedChoice=stored.get(wid)||0;
     const options=optionsByWordId.get(wid)||[{label:"— default —",text:null,source:0,optionId:null}];
-    let selectedIndex=storedChoice;
-    let rendering=storedChoice>0&&options[storedChoice]?options[storedChoice].text:null;
-    if(!rendering){
-      const ld=arr(authoringState.detail.lemmaDefaults).find(row=>
-        row.lemma===savedWord.lemmaKey&&wid>=Number(row.from_word_id));
-      if(ld){
-        // The legacy lemma default is authoritative even when its rendering
-        // has fallen outside today's top-12 phrase list. Keep the stored byte
-        // index unchanged; the sentence still receives the saved rendering.
-        const found=options.findIndex((option,index)=>index>0&&option.text===ld.rendering);
-        if(found>0) selectedIndex=found;
-        rendering=ld.rendering;
-      }
-    }
-    if(!options[selectedIndex]) selectedIndex=0;
-    authoringState.byWordId.set(wid,{options,choiceIndex:selectedIndex,storedChoice,rendering});
+    const ld=arr(authoringState.detail.lemmaDefaults).find(row=>
+      row.lemma===savedWord.lemmaKey&&wid>=Number(row.from_word_id));
+    const selection=authoringSelection(options,storedChoice,ld);
+    authoringState.byWordId.set(wid,{options,...selection,storedChoice});
     authoringState.wordsById.set(wid,savedWord);
   }
 }
