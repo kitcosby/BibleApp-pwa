@@ -153,6 +153,7 @@ footer{color:var(--slate);font-size:.82rem;text-align:center;padding:1.5rem 1rem
 .banner{background:var(--papyrus);border:1px solid var(--bronze);border-left:4px solid var(--gold);border-radius:6px;padding:.55rem .8rem;margin:.8rem 0;font-family:Inter,sans-serif;font-size:.85rem}
 .state{font-family:Inter,sans-serif;color:var(--slate);text-align:center;margin:2rem 0}
 .state.err{color:var(--ink)}
+.auth-form{display:grid;gap:.7rem;max-width:440px}.auth-form label{display:grid;gap:.25rem}.auth-form input{width:100%;font:inherit;padding:.65rem;border:1px solid var(--bronze);border-radius:8px;background:#fff}.auth-form input[type=password]{min-height:44px}
 </style>
 </head>
 <body>
@@ -160,7 +161,7 @@ footer{color:var(--slate);font-size:.82rem;text-align:center;padding:1.5rem 1rem
   <a class="brand" href="#/">Build Your Own Translation</a>
   <nav>
     <a href="#/">Home</a><a href="#/interlinear">Study</a>
-    <a href="#/read">Read</a><a href="#/search">Search</a><a href="#/about">About</a>
+    <a href="#/read">Read</a><a href="#/search">Search</a><a href="#/about">About</a><a href="#/account">Account</a>
   </nav>
 </header>
 <div id="textnav"></div>
@@ -459,6 +460,81 @@ function arr(x){ return Array.isArray(x) ? x : []; }
    Rules: non-JSON responses are unreachable; JSON {"error":"not found"}
    with 404 is authoritative. Only successful results are memoized. */
 const API_BASE = String(window.BIBLEAPP_API_BASE || "/bible").replace(/\/+$/, "");
+
+const AUTH_BASE = String(window.BIBLEAPP_AUTH_BASE || API_BASE).replace(/\/+$/, "");
+const AUTHORING_API_BASE = String(window.BIBLEAPP_AUTHORING_API_BASE || "/api").replace(/\/+$/, "");
+const authState = {
+  csrfToken: null, user: null, accessToken: null, tokenExpiresAt: 0
+};
+let authMessage = "";
+
+async function refreshAuthState(){
+  try{
+    const response = await fetch(AUTH_BASE + "/api/auth/bootstrap", {
+      method:"GET", credentials:"include", cache:"no-store",
+      headers:{Accept:"application/json"}
+    });
+    const data = await response.json();
+    if(!response.ok) throw new Error(data.error || "Authentication service unavailable");
+    authState.csrfToken = data.csrf_token || null;
+    authState.user = data.authenticated ? data.user : null;
+    authState.accessToken = null;
+    authState.tokenExpiresAt = 0;
+    if(authState.user) await exchangeIdentityToken();
+  }catch(e){
+    authState.csrfToken = null;
+    authState.user = null;
+    authState.accessToken = null;
+    authState.tokenExpiresAt = 0;
+  }
+}
+
+async function authPost(action, payload){
+  if(!authState.csrfToken) await refreshAuthState();
+  if(!authState.csrfToken) throw new Error("Could not establish a secure session. Try again.");
+  const response = await fetch(AUTH_BASE + "/api/auth/" + action, {
+    method:"POST", credentials:"include", cache:"no-store",
+    headers:{
+      Accept:"application/json", "Content-Type":"application/json",
+      "X-CSRF-Token":authState.csrfToken
+    },
+    body:JSON.stringify(payload || {})
+  });
+  const data = await response.json().catch(()=>({}));
+  if(!response.ok) throw new Error(data.error || "Authentication request failed");
+  if(data.csrf_token) authState.csrfToken = data.csrf_token;
+  authState.user = data.authenticated ? data.user : null;
+  return data;
+}
+
+async function exchangeIdentityToken(){
+  if(!authState.user) return null;
+  if(!authState.csrfToken) await refreshAuthState();
+  const response = await fetch(AUTH_BASE + "/api/auth/token", {
+    method:"POST", credentials:"include", cache:"no-store",
+    headers:{Accept:"application/json", "X-CSRF-Token":authState.csrfToken}
+  });
+  const data = await response.json().catch(()=>({}));
+  if(!response.ok) throw new Error(data.error || "Could not obtain an API session");
+  authState.accessToken = data.access_token;
+  authState.tokenExpiresAt = Date.now() + Math.max(1, Number(data.expires_in || 300) - 20) * 1000;
+  return authState.accessToken;
+}
+
+/* Authenticated Express calls use a short-lived in-memory bearer token.
+   No credentials or tokens are persisted in browser storage. */
+async function apiAuthoringFetch(path, options){
+  if(!authState.user) throw new Error("Sign in to use your translations.");
+  if(!authState.accessToken || Date.now() >= authState.tokenExpiresAt)
+    await exchangeIdentityToken();
+  const headers = new Headers((options && options.headers) || {});
+  headers.set("Authorization", "Bearer " + authState.accessToken);
+  if(!headers.has("Accept")) headers.set("Accept", "application/json");
+  return fetch(AUTHORING_API_BASE + path, {
+    ...(options || {}), headers, credentials:"omit", cache:"no-store"
+  });
+}
+
 const API_TIMEOUT_MS = 8000;
 const API_COOLDOWN_MS = 30000;
 const apiDownUntil = new Map();   // path -> time when it may be tried again
@@ -946,6 +1022,39 @@ function emptyChapterMsg(sample){
 }
 
 /* ============ VIEWS (each returns {html, nav, sample}) ============ */
+
+function viewAccount(){
+  const message = authMessage ? `<p class="banner" role="status">${esc(authMessage)}</p>` : "";
+  if(authState.user){
+    return {sample:false, nav:"", html:message + `<h1>Account</h1>
+      <section class="panel">
+        <h2>Signed in</h2>
+        <p>You are signed in as <strong>${esc(authState.user.display_name || authState.user.username)}</strong>.</p>
+        <p class="note">Your account is managed by the BibleApp account service. API access uses a short-lived token held only in memory.</p>
+        <form data-form="account-logout"><button class="btn" type="submit">Sign out</button></form>
+      </section>`};
+  }
+  return {sample:false, nav:"", html:message + `<h1>Account</h1>
+    <p class="note">Sign in with your existing BibleApp account, or create an account. Existing accounts and passwords are preserved.</p>
+    <section class="panel">
+      <h2>Sign in</h2>
+      <form data-form="account-login" class="auth-form">
+        <label>Username <input name="username" type="text" autocomplete="username" required></label>
+        <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+        <button class="btn" type="submit">Sign in</button>
+      </form>
+    </section>
+    <section class="panel">
+      <h2>Create account</h2>
+      <form data-form="account-signup" class="auth-form">
+        <label>Username <input name="username" type="text" autocomplete="username" required></label>
+        <label>Password <input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="1024" required></label>
+        <p class="note">Use a password or passphrase between 12 and 1024 characters.</p>
+        <button class="btn" type="submit">Create account</button>
+      </form>
+    </section>`};
+}
+
 async function viewHome(){
   const bk = await getBooks();
   const ch = await getChapters(cur.book);
@@ -1208,6 +1317,7 @@ async function render(){
     else if(h.startsWith("#/read")) out = await viewRead();
     else if(h.startsWith("#/word/")) out = await viewWordPage(decodeURIComponent(h.slice("#/word/".length)));
     else if(h.startsWith("#/about")) out = viewAbout();
+    else if(h.startsWith("#/account")) out = viewAccount();
     else if(h.startsWith("#/search")){
       let q = lastQuery;
       try{ const p = sessionStorage.getItem("byotPendingQuery");
@@ -1295,10 +1405,39 @@ document.addEventListener("input", e=>{
     });
   }
 });
-document.addEventListener("submit", e=>{
+document.addEventListener("submit", async e=>{
   const f = e.target.closest("form[data-form]");
   if(!f) return;
   e.preventDefault();
+  const kind = f.getAttribute("data-form");
+  if(kind === "account-login" || kind === "account-signup"){
+    const values = new FormData(f);
+    authMessage = "";
+    try{
+      await authPost(kind === "account-login" ? "login" : "signup", {
+        username: values.get("username"), password: values.get("password")
+      });
+      await exchangeIdentityToken();
+      authMessage = "You are signed in.";
+    }catch(err){
+      authMessage = err && err.message ? err.message : "Authentication failed.";
+    }
+    render();
+    return;
+  }
+  if(kind === "account-logout"){
+    authMessage = "";
+    try{
+      await authPost("logout", {});
+      authState.accessToken = null;
+      authState.tokenExpiresAt = 0;
+      authMessage = "You are signed out.";
+    }catch(err){
+      authMessage = err && err.message ? err.message : "Sign out failed.";
+    }
+    render();
+    return;
+  }
   const q = f.querySelector("input[name='q']").value;
   lastQuery = q;
   if(f.getAttribute("data-form")==="homesearch"){
@@ -1311,5 +1450,5 @@ document.addEventListener("submit", e=>{
 if("serviceWorker" in navigator){
   window.addEventListener("load", function(){ navigator.serviceWorker.register("sw.js").catch(function(){}); });
 }
-render();
+refreshAuthState().finally(()=>render());
 </script>
