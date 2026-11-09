@@ -65,8 +65,7 @@ test("a saved lemma default remains effective when absent from the current phras
     arr: value => Array.isArray(value) ? value : [],
     authoringState: { detail: { otherOptions: [] } },
   };
-  const end = html.indexOf("\\nasync function prepareAuthoringVerses", start);
-  runInNewContext(html.slice(start, end), context);
+  runInNewContext(helperSource, context);
   const options = context.authoringOptionsForWord(
     { kjv: "current KJV", ylt: "current Young" },
     { kjv_phrases: ["current KJV"], ylt_phrases: ["current Young"] },
