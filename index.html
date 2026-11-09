@@ -661,7 +661,9 @@ async function prepareAuthoringVerses(verses, includeControls=true){
   const lexiconByStrong=new Map();
   await Promise.all([...new Set(needsOptions.map(word=>word.s))].map(async strongs=>{
     const page=await getWordPage(strongs);
-    lexiconByStrong.set(strongs,page&&page.data?page.data:{});
+    if(!page||page.sample||!page.data)
+      throw new Error("Live corpus phrase data is required to preserve the saved choice order.");
+    lexiconByStrong.set(strongs,page.data);
   }));
   const optionsByWordId=new Map();
   for(const word of needsOptions)
