@@ -440,11 +440,18 @@ function isUntranslated(s){ return typeof s==="string" && /^\(.*\)$/.test(s.trim
    Read: choice -> KJV -> gloss. Custom choices are the user's own text.
    Returns null when the word has no rendering to show (untranslated). */
 function effective(w, ctx){
-  const c = store.get(w.s);
-  if(c && c.mode==="custom") return c.text ?? "";
-  const mode = c ? c.mode : (ctx==="read" ? "kjv" : "youngs");
-  let base = mode==="kjv" ? w.kjv : w.ylt;
-  if(base==null || base==="") base = w.g || "";
+  if(authState.user&&authoringState.activeId&&Number(authoringState.activeId)>2&&w&&w.wid!=null){
+    const saved=authoringState.byWordId.get(Number(w.wid));
+    if(saved&&saved.rendering) return saved.rendering;
+    const base=baseStore.get(ctx)==="kjv"?w.kjv:w.ylt;
+    const fallback=base==null||base===""?(w.g||""):base;
+    return isUntranslated(fallback)?null:fallback;
+  }
+  const c=store.get(w.s);
+  if(c&&c.mode==="custom") return c.text??"";
+  const mode=c?c.mode:(ctx==="read"?"kjv":"youngs");
+  let base=mode==="kjv"?w.kjv:w.ylt;
+  if(base==null||base==="") base=w.g||"";
   if(isUntranslated(base)) return null;
   return base;
 }
@@ -465,6 +472,10 @@ const AUTH_BASE = String(window.BIBLEAPP_AUTH_BASE || API_BASE).replace(/\/+$/, 
 const AUTHORING_API_BASE = String(window.BIBLEAPP_AUTHORING_API_BASE || "/api").replace(/\/+$/, "");
 const authState = {
   csrfToken: null, user: null, accessToken: null, tokenExpiresAt: 0
+};
+const authoringState = {
+  translations: [], activeId: null, detail: null,
+  byWordId: new Map(), wordsById: new Map(), message: ""
 };
 let authMessage = "";
 
@@ -489,8 +500,11 @@ async function refreshAuthState(){
   authState.accessToken = null;
   authState.tokenExpiresAt = 0;
   if(authState.user){
-    try{ await exchangeIdentityToken(); }
-    catch(e){ authMessage = e && e.message ? e.message : "API identity exchange unavailable."; }
+    try{ await exchangeIdentityToken(); await loadTranslations(); }
+    catch(e){ authMessage=e&&e.message?e.message:"API identity exchange unavailable."; }
+  }else{
+    authoringState.translations=[]; authoringState.activeId=null; authoringState.detail=null;
+    authoringState.byWordId.clear(); authoringState.wordsById.clear();
   }
 }
 
@@ -584,6 +598,125 @@ async function fromApi(path, fallback){
   const s = fallback ? fallback() : null;
   if(s==null) return {data:null, sample:true, unavailable:true};
   return {data:s, sample:true};
+}
+
+
+async function loadTranslations(){
+  const response = await apiAuthoringFetch("/bible/translations");
+  const data = await response.json().catch(()=>({}));
+  if(!response.ok) throw new Error(data.error || "Could not load translations");
+  authoringState.translations = arr(data.translations);
+  if(authoringState.activeId && !authoringState.translations.some(t=>Number(t.translation_id)===Number(authoringState.activeId)))
+    authoringState.activeId = null;
+  if(!authoringState.activeId){
+    const firstPrivate = authoringState.translations.find(t=>Number(t.translation_id)>2);
+    if(firstPrivate) authoringState.activeId = Number(firstPrivate.translation_id);
+  }
+  if(authoringState.activeId) await loadTranslationDetail(authoringState.activeId);
+  else authoringState.detail = null;
+}
+async function loadTranslationDetail(id){
+  const response = await apiAuthoringFetch("/bible/translations/"+encodeURIComponent(id));
+  const data = await response.json().catch(()=>({}));
+  if(!response.ok) throw new Error(data.error || "Could not load translation");
+  authoringState.detail=data; authoringState.activeId=Number(id);
+  authoringState.byWordId.clear(); authoringState.wordsById.clear();
+  return data;
+}
+async function setActiveTranslation(id){
+  authoringState.message=""; authoringState.activeId=id?Number(id):null;
+  authoringState.detail=null; authoringState.byWordId.clear(); authoringState.wordsById.clear();
+  if(authoringState.activeId) await loadTranslationDetail(authoringState.activeId);
+}
+function authoringPhraseOptions(phrases,here,source,prefix){
+  const ordered=[]; if(here) ordered.push(here);
+  for(const phrase of arr(phrases)) if(phrase && phrase!==here) ordered.push(phrase);
+  return ordered.slice(0,12).map(text=>({label:prefix+": "+text,text,source,optionId:null}));
+}
+async function authoringOptionsForWord(word){
+  const page=await getWordPage(word.s), data=page&&page.data?page.data:{};
+  const options=[{label:"— default —",text:null,source:0,optionId:null}];
+  options.push(...authoringPhraseOptions(data.kjvList,word.kjv,1,"KJV"));
+  options.push(...authoringPhraseOptions(data.yltList,word.ylt,2,"Young's"));
+  for(const other of arr(authoringState.detail&&authoringState.detail.otherOptions))
+    options.push({label:"Other: "+other.text,text:other.text,source:3,optionId:Number(other.option_id)});
+  return options.slice(0,255);
+}
+async function prepareAuthoringVerses(verses){
+  if(!authState.user || !authoringState.activeId || Number(authoringState.activeId)<=2) return;
+  if(!authoringState.detail || Number(authoringState.detail.translation.translation_id)!==Number(authoringState.activeId))
+    await loadTranslationDetail(authoringState.activeId);
+  const words=arr(verses).flatMap(v=>arr(v.words)).filter(w=>w&&Number.isSafeInteger(Number(w.wid))&&Number(w.wid)>0&&w.s);
+  const ids=[...new Set(words.map(w=>Number(w.wid)))], stored=new Map();
+  for(let i=0;i<ids.length;i+=100){
+    const batch=ids.slice(i,i+100);
+    const response=await apiAuthoringFetch("/bible/translations/"+authoringState.activeId+"/choices?wordIds="+batch.join(","));
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok) throw new Error(data.error||"Could not load saved word choices");
+    for(const row of arr(data.choices)) stored.set(Number(row.word_id),Number(row.choice));
+  }
+  const phraseCache=new Map();
+  for(const word of words) if(!phraseCache.has(word.s))
+    phraseCache.set(word.s,await authoringOptionsForWord(word));
+  for(const word of words){
+    const wid=Number(word.wid), options=phraseCache.get(word.s)||[{label:"— default —",text:null,source:0,optionId:null}];
+    const storedChoice=stored.get(wid)||0;
+    let selectedIndex=storedChoice;
+    let rendering=storedChoice>0&&options[storedChoice]?options[storedChoice].text:null;
+    if(!rendering){
+      const ld=arr(authoringState.detail.lemmaDefaults).find(row=>row.lemma===word.s&&wid>=Number(row.from_word_id));
+      if(ld){
+        const found=options.findIndex((option,index)=>index>0&&option.text===ld.rendering);
+        if(found>0){selectedIndex=found;rendering=ld.rendering;}
+      }
+    }
+    if(!options[selectedIndex]) selectedIndex=0;
+    authoringState.byWordId.set(wid,{options,choiceIndex:selectedIndex,storedChoice,rendering});
+    authoringState.wordsById.set(wid,word);
+  }
+}
+async function saveAuthoringChoice(select){
+  const wid=Number(select.dataset.wid), choice=Number(select.value);
+  const entry=authoringState.byWordId.get(wid), word=authoringState.wordsById.get(wid);
+  if(!entry||!word||!Number.isInteger(choice)||choice<0||choice>=entry.options.length)
+    throw new Error("This word's translation options are unavailable.");
+  const payload={choice};
+  if(choice>0){
+    const option=entry.options[choice];
+    if(!word.s||!option||!option.text) throw new Error("This word cannot be saved with the current corpus data.");
+    payload.lemmaDefault={lemma:word.s,rendering:option.text,fromWordId:wid,source:option.source,otherOptionId:option.optionId};
+  }
+  const response=await apiAuthoringFetch("/bible/translations/"+authoringState.activeId+"/choices/"+wid,{
+    method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)
+  });
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok) throw new Error(data.error||"Could not save this word choice");
+  await loadTranslationDetail(authoringState.activeId);
+  await prepareAuthoringVerses([{words:[word]}]);
+  authoringState.message="Saved to "+(authoringState.detail.translation.name||"your translation")+".";
+}
+async function createAuthoringTranslation(form){
+  const values=new FormData(form);
+  const response=await apiAuthoringFetch("/bible/translations",{
+    method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({name:values.get("name"),description:values.get("description")})
+  });
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok) throw new Error(data.error||"Could not create translation");
+  authoringState.activeId=Number(data.translation.translation_id);
+  await loadTranslations(); await setActiveTranslation(authoringState.activeId);
+  authoringState.message="Translation created. Existing browser-local choices have not been imported.";
+}
+async function createAuthoringOption(form){
+  const values=new FormData(form), text=String(values.get("text")||"").trim();
+  if(!text) throw new Error("Enter an Other rendering first.");
+  const response=await apiAuthoringFetch("/bible/translations/"+authoringState.activeId+"/options",{
+    method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text})
+  });
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok) throw new Error(data.error||"Could not add Other rendering");
+  await loadTranslationDetail(authoringState.activeId);
+  authoringState.message=data.existing?"That Other rendering already exists.":"Other rendering added.";
 }
 
 /* ============ SAMPLE FALLBACK (Genesis 1:1–5 only) ============ */
@@ -829,17 +962,22 @@ function unavailableMsg(what){
 function loadingHtml(){ return `<p class="state">Loading…</p>`; }
 function renderingControls(word, ctx, bare, label){
   ctlWords.set(word.s, word);
-  const mode = choiceMode(word);
-  const c = store.get(word.s);
-  const val = c && c.mode==="custom" ? c.text : (effective(word, ctx) ?? "");
-  return `${bare?"":`<label>${esc(label || "Translation")}</label>`}
+  if(authState.user&&authoringState.activeId&&Number(authoringState.activeId)>2&&word.wid!=null&&authoringState.byWordId.has(Number(word.wid))){
+    const saved=authoringState.byWordId.get(Number(word.wid));
+    return `${bare?"":`<label>${esc(label||"Translation")}</label>`}
+      <select data-act="authoring-choice" data-wid="${Number(word.wid)}">
+        ${saved.options.map((option,index)=>`<option value="${index}" ${index===saved.choiceIndex?"selected":""}>${esc(option.label)}</option>`).join("")}
+      </select>`;
+  }
+  const mode=choiceMode(word), c=store.get(word.s);
+  const val=c&&c.mode==="custom"?c.text:(effective(word,ctx)??"");
+  return `${bare?"":`<label>${esc(label||"Translation")}</label>`}
     <select data-act="tsel" data-s="${esc(word.s)}" data-ctx="${ctx}">
       <option value="youngs" ${mode==="youngs"?"selected":""}>Young's</option>
       <option value="kjv" ${mode==="kjv"?"selected":""}>King James</option>
       <option value="custom" ${mode==="custom"?"selected":""}>Custom…</option>
     </select>
-    ${mode==="custom" ? `<input type="text" data-act="custom" data-s="${esc(word.s)}"
-        value="${esc(val)}" placeholder="Your rendering…">` : ""}`;
+    ${mode==="custom"?`<input type="text" data-act="custom" data-s="${esc(word.s)}" value="${esc(val)}" placeholder="Your rendering…">`:""}`;
 }
 /* The source the card's rendering comes from, using effective()'s order:
    reader's choice, then Young's (computed) or King James, then the gloss. */
@@ -1029,28 +1167,50 @@ function emptyChapterMsg(sample){
 /* ============ VIEWS (each returns {html, nav, sample}) ============ */
 
 function viewAccount(){
-  const message = authMessage ? `<p class="banner" role="status">${esc(authMessage)}</p>` : "";
+  const message=authMessage?`<p class="banner" role="status">${esc(authMessage)}</p>`:"";
   if(authState.user){
-    return {sample:false, nav:"", html:message + `<h1>Account</h1>
-      <section class="panel">
-        <h2>Signed in</h2>
-        <p>You are signed in as <strong>${esc(authState.user.display_name || authState.user.username)}</strong>.</p>
-        <p class="note">Your account is managed by the BibleApp account service. API access uses a short-lived token held only in memory.</p>
+    const translations=authoringState.translations.map(t=>{
+      const id=Number(t.translation_id);
+      return `<option value="${id}" ${id===Number(authoringState.activeId)?"selected":""}>${esc(t.name)}${id<=2?" · read-only":""}</option>`;
+    }).join("");
+    const active=authoringState.translations.find(t=>Number(t.translation_id)===Number(authoringState.activeId));
+    const status=authoringState.message?`<p class="banner" role="status">${esc(authoringState.message)}</p>`:"";
+    return {sample:false,nav:"",html:message+`<h1>Account</h1>
+      <section class="panel"><h2>Signed in</h2>
+        <p>You are signed in as <strong>${esc(authState.user.display_name||authState.user.username)}</strong>.</p>
+        <p class="note">The Flask account remains the identity authority. API bearer tokens are short-lived and held only in memory.</p>
         <form data-form="account-logout"><button class="btn" type="submit">Sign out</button></form>
+      </section>
+      <section class="panel"><h2>Your translations</h2>
+        <label>Active translation <select data-act="translation-select">
+          <option value="">No server translation selected</option>${translations}
+        </select></label>
+        ${active?`<p>Working on <strong>${esc(active.name)}</strong>.</p>`:`<p class="note">Create a translation to save word choices to your account.</p>`}
+        ${status}
+        <form data-form="account-create-translation" class="auth-form">
+          <label>New translation name <input name="name" type="text" maxlength="120" required></label>
+          <label>Description <input name="description" type="text" maxlength="2000"></label>
+          <button class="btn" type="submit">Create translation</button>
+        </form>
+        ${active&&Number(active.translation_id)>2?`<hr><h3>Add an Other rendering</h3>
+          <form data-form="account-add-option" class="auth-form">
+            <label>Shared Other option <input name="text" type="text" maxlength="2000" required></label>
+            <button class="btn" type="submit">Add option</button>
+          </form>`:""}
+        <p class="note">Server authoring currently covers the 264,217 Hebrew word IDs. Greek word-choice persistence is not yet implemented.</p>
+        <p class="note">Existing browser-local rendering choices are preserved but are not imported automatically.</p>
       </section>`};
   }
-  return {sample:false, nav:"", html:message + `<h1>Account</h1>
+  return {sample:false,nav:"",html:message+`<h1>Account</h1>
     <p class="note">Sign in with your existing BibleApp account, or create an account. Existing accounts and passwords are preserved.</p>
-    <section class="panel">
-      <h2>Sign in</h2>
+    <section class="panel"><h2>Sign in</h2>
       <form data-form="account-login" class="auth-form">
         <label>Username <input name="username" type="text" autocomplete="username" required></label>
         <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
         <button class="btn" type="submit">Sign in</button>
       </form>
     </section>
-    <section class="panel">
-      <h2>Create account</h2>
+    <section class="panel"><h2>Create account</h2>
       <form data-form="account-signup" class="auth-form">
         <label>Username <input name="username" type="text" autocomplete="username" required></label>
         <label>Password <input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="1024" required></label>
@@ -1059,7 +1219,6 @@ function viewAccount(){
       </form>
     </section>`};
 }
-
 async function viewHome(){
   const bk = await getBooks();
   const ch = await getChapters(cur.book);
@@ -1118,6 +1277,10 @@ async function viewStudy(){
     ? `Verse ${cur.v} was not found in the database.`
     : `Verse ${cur.v} is not available: the database is unreachable, and the sample does not include ${ref0}.`)};
   const v = vr.data;
+  if(authState.user&&authoringState.activeId&&Number(authoringState.activeId)>2&&!v.greek){
+    try{await prepareAuthoringVerses([v]);}
+    catch(e){authoringState.message="Server translation unavailable; displaying browser-local choices instead. "+(e.message||"");}
+  }
   verseCache.set("v"+v.n, v);
   const hasWords = v.words && v.words.length;
   const body = hasWords
@@ -1150,6 +1313,10 @@ async function viewRead(){
   if(chap.notFound) return {sample:false, nav, html: errorBlock(`${bookName(cur.book)} ${cur.ch} was not found in the database.`)};
   if(!nums.length) return {sample, nav, html: bannerFor(sample) + errorBlock(emptyChapterMsg(sample))};
   if(!nums.includes(cur.v)) cur.v = nums[0];
+  if(authState.user&&authoringState.activeId&&Number(authoringState.activeId)>2){
+    try{await prepareAuthoringVerses(verses);}
+    catch(e){authoringState.message="Server translation unavailable; displaying browser-local choices instead. "+(e.message||"");}
+  }
   const paras = verses.map(v=>{
     const html = readHtml(v);
     return `<p id="rv${v.n}"><span class="vn">${v.n}</span>${html ||
@@ -1372,8 +1539,19 @@ document.addEventListener("click", e=>{
     } else render();
   }
 });
-document.addEventListener("change", e=>{
-  const t = e.target;
+document.addEventListener("change", async e=>{
+  const t=e.target;
+  if(t.matches("[data-act='translation-select']")){
+    try{await setActiveTranslation(t.value?Number(t.value):null);}
+    catch(err){authoringState.message=err.message||"Could not select translation.";}
+    render(); return;
+  }
+  if(t.matches("[data-act='authoring-choice']")){
+    authoringState.message="";
+    try{await saveAuthoringChoice(t);}
+    catch(err){authoringState.message=err.message||"Could not save word choice.";}
+    render(); return;
+  }
   if(t.matches("[data-act='tsel']")){
     const s = t.getAttribute("data-s");
     const word = ctlWords.get(s) || {s, kjv:null, ylt:null, g:""};
@@ -1423,6 +1601,7 @@ document.addEventListener("submit", async e=>{
         username: values.get("username"), password: values.get("password")
       });
       await exchangeIdentityToken();
+      await loadTranslations();
       authMessage = "You are signed in.";
     }catch(err){
       authMessage = err && err.message ? err.message : "Authentication failed.";
@@ -1431,17 +1610,27 @@ document.addEventListener("submit", async e=>{
     return;
   }
   if(kind === "account-logout"){
-    authMessage = "";
+    authMessage="";
     try{
-      await authPost("logout", {});
-      authState.accessToken = null;
-      authState.tokenExpiresAt = 0;
-      authMessage = "You are signed out.";
-    }catch(err){
-      authMessage = err && err.message ? err.message : "Sign out failed.";
-    }
-    render();
-    return;
+      await authPost("logout",{});
+      authState.accessToken=null; authState.tokenExpiresAt=0;
+      authoringState.translations=[]; authoringState.activeId=null; authoringState.detail=null;
+      authoringState.byWordId.clear(); authoringState.wordsById.clear();
+      authMessage="You are signed out.";
+    }catch(err){authMessage=err&&err.message?err.message:"Sign out failed.";}
+    render(); return;
+  }
+  if(kind==="account-create-translation"){
+    authoringState.message="";
+    try{await createAuthoringTranslation(f);}
+    catch(err){authoringState.message=err.message||"Could not create translation.";}
+    render(); return;
+  }
+  if(kind==="account-add-option"){
+    authoringState.message="";
+    try{await createAuthoringOption(f);}
+    catch(err){authoringState.message=err.message||"Could not add Other option.";}
+    render(); return;
   }
   const q = f.querySelector("input[name='q']").value;
   lastQuery = q;
