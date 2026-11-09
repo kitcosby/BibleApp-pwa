@@ -58,3 +58,38 @@ test("root-code lemma words use the same phrase option builder without a Strong'
   assert.equal(options[1].text, "root KJV");
   assert.equal(options[2].text, "root Young");
 });
+
+
+test("a saved lemma default remains effective when absent from the current phrase shortlist", () => {
+  const context = {
+    arr: value => Array.isArray(value) ? value : [],
+    authoringState: { detail: { otherOptions: [] } },
+  };
+  const end = html.indexOf("\\nasync function prepareAuthoringVerses", start);
+  runInNewContext(html.slice(start, end), context);
+  const options = context.authoringOptionsForWord(
+    { kjv: "current KJV", ylt: "current Young" },
+    { kjv_phrases: ["current KJV"], ylt_phrases: ["current Young"] },
+  );
+  const selected = context.authoringSelection(
+    options, 0, { rendering: "a formerly common phrase" },
+  );
+  assert.equal(selected.choiceIndex, 0);
+  assert.equal(selected.rendering, "a formerly common phrase");
+});
+
+test("an available lemma-default phrase selects its existing dropdown index", () => {
+  const context = {
+    arr: value => Array.isArray(value) ? value : [],
+    authoringState: { detail: { otherOptions: [] } },
+  };
+  const end = html.indexOf("\\nasync function prepareAuthoringVerses", start);
+  runInNewContext(html.slice(start, end), context);
+  const options = context.authoringOptionsForWord(
+    { kjv: "current KJV", ylt: "current Young" },
+    { kjv_phrases: ["current KJV", "saved phrase"], ylt_phrases: [] },
+  );
+  const selected = context.authoringSelection(options, 0, { rendering: "saved phrase" });
+  assert.equal(selected.choiceIndex, 2);
+  assert.equal(selected.rendering, "saved phrase");
+});
