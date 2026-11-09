@@ -5,8 +5,8 @@
 //   Only successful JSON responses are cached. With no cache and no network: 503.
 // - Everything else: network-first, with cache fallback.
 // Paths are resolved against the worker's scope, so the app works from any subpath.
-const CACHE = "byot-v17";
-const API_CACHE = "byot-api-v2";
+const CACHE = "byot-v18";
+const API_CACHE = "byot-api-v3";
 const KEEP = [CACHE, API_CACHE];
 const SHELL = [
   "./",
@@ -40,12 +40,25 @@ function isApi(url) {
 
 function isJson(res) {
   const type = res.headers.get("content-type") || "";
-  return res.ok && type.includes("json");
+  const cacheControl = res.headers.get("cache-control") || "";
+  return res.ok && type.includes("json") && !/\\bno-store\\b/i.test(cacheControl);
+}
+
+function isPrivateApiRequest(req, url) {
+  // Session/CSRF bootstrap and all bearer-authenticated API responses must
+  // never enter the shared service-worker cache.
+  return url.pathname.includes("/api/auth/") ||
+    url.pathname.includes("/api/bible/") ||
+    req.headers.has("authorization");
 }
 
 async function apiResponse(event, req) {
   const cache = await caches.open(API_CACHE);
-  const hit = await cache.match(req);
+  let hit = await cache.match(req);
+  if (hit && /\\bno-store\\b/i.test(hit.headers.get("cache-control") || "")) {
+    await cache.delete(req);
+    hit = null;
+  }
   const network = fetch(req)
     .then((res) => {
       if (isJson(res)) cache.put(req, res.clone());
@@ -68,6 +81,10 @@ self.addEventListener("fetch", (event) => {
   const scopeRoot = self.registration.scope;
 
   if (isApi(url)) {
+    if (isPrivateApiRequest(req, url)) {
+      event.respondWith(fetch(req, { cache: "no-store" }));
+      return;
+    }
     event.respondWith(apiResponse(event, req));
     return;
   }
