@@ -50,6 +50,8 @@ function isPrivateApiRequest(req, url) {
   // never enter the shared service-worker cache.
   return url.pathname.includes("/api/auth/") ||
     url.pathname.includes("/api/bible/") ||
+    // Choice-byte indices must be built from the current phrase ordering.
+    url.pathname.includes("/api/word-options") ||
     req.headers.has("authorization");
 }
 
