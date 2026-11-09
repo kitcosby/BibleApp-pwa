@@ -695,8 +695,12 @@ async function prepareAuthoringVerses(verses, includeControls=true){
       const ld=arr(authoringState.detail.lemmaDefaults).find(row=>
         row.lemma===savedWord.lemmaKey&&wid>=Number(row.from_word_id));
       if(ld){
+        // The legacy lemma default is authoritative even when its rendering
+        // has fallen outside today's top-12 phrase list. Keep the stored byte
+        // index unchanged; the sentence still receives the saved rendering.
         const found=options.findIndex((option,index)=>index>0&&option.text===ld.rendering);
-        if(found>0){selectedIndex=found;rendering=ld.rendering;}
+        if(found>0) selectedIndex=found;
+        rendering=ld.rendering;
       }
     }
     if(!options[selectedIndex]) selectedIndex=0;
