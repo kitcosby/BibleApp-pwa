@@ -565,7 +565,7 @@ const apiMemo = new Map();
 // API base is deployment configuration, not a probe/fallback list.
 async function apiTry(base, path){
   const ctrl = new AbortController();
-  const timeoutMs = path.startsWith("/api/search/variants?") ? 30000 : API_TIMEOUT_MS;
+  const timeoutMs = path.startsWith("/api/search/variants?") ? 45000 : API_TIMEOUT_MS;
   const timer = setTimeout(()=>ctrl.abort(), timeoutMs);
   let res, text;
   try{
