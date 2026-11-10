@@ -221,3 +221,18 @@ flowchart LR
 The three origins are configured independently through `BIBLEAPP_API_BASE`, `BIBLEAPP_AUTH_BASE`, and `BIBLEAPP_AUTHORING_API_BASE` in `config.js`. Cross-origin Flask auth requires the exact frontend origin in `BIBLEAPP_ALLOWED_ORIGINS`; cross-site cookies require Secure + SameSite=None and may still be affected by browser third-party-cookie restrictions. Flask and Express must share a dedicated server-side `BIBLEAPP_IDENTITY_TOKEN_SECRET`; it is separate from the Flask session secret and sandbox token.
 
 This implementation is staged in draft PRs and has not been activated on Lampy. Production secret provisioning, service restarts, and database changes remain separate authorized deployment steps. Before production, complete browser end-to-end tests against configured staging services, cross-user ownership tests, logout/token-expiry checks, and an explicit strategy for migrating existing localStorage choices. Persistent login throttling, account recovery/email verification, immediate bearer-token revocation, and Greek word-choice persistence remain open.
+
+## Search augmentation — 2026-11-09
+
+The Search view now exposes two deliberately separate search modes:
+
+- **Passage meaning:** the existing Flask `GET /api/search?q=...` route embeds the query with local Ollama `nomic-embed-text` and searches 31,102 YLT verse embeddings in `bible.ylt_verses_embedding_store`. This path is unchanged.
+- **Hebrew spelling:** the new Flask `GET /api/search/variants?q=...` route searches 528,565 reconstructed spelling-variant embeddings, keyed by `(word_id, variant_seq)`. The embedding metadata records `nomic-embed-text:latest`, 768 dimensions, and `variant_kind='spelling'` scope.
+
+The recovered SQLite embedding set was checked against the staging corpus: 528,565 source spelling keys and 528,565 embedding keys, with no missing or extra keys. Each source blob is 3,072 bytes (768 float32 values). The recorded input is `letters`, falling back to `unpointed` and `variant_text`; 14 empty-field paseq rows were topped up from the corresponding pointed word form. This is a reconstructed dataset, not a claim that the lost original run was reproduced bit-for-bit.
+
+The variant index is installed in a separate staging search database and queried read-only by Flask through the server-side `BIBLE_VARIANT_SEARCH_DATABASE_URL`. It uses pgvector cosine distance with an IVFFlat index. Exact spelling matches are returned before vector-nearest spellings. Hebrew combining marks are stripped from query input to align it with the unpointed indexed strings. The endpoint rejects non-Hebrew queries and returns `Cache-Control: no-store`.
+
+The two indexes answer different questions. Verse embeddings retrieve passages by meaning; spelling-variant embeddings retrieve Hebrew word forms by model proximity. A high vector similarity is not proof of lexical identity, shared morphology, or textual equivalence. Search results preserve the underlying variant source and witness metadata so users can inspect the evidence.
+
+This work is staged only. Production Flask configuration, production database/index creation, and production deployment remain separate steps. The existing verse search route and verse index are not replaced or migrated.
