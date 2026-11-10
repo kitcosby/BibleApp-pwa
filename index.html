@@ -565,7 +565,8 @@ const apiMemo = new Map();
 // API base is deployment configuration, not a probe/fallback list.
 async function apiTry(base, path){
   const ctrl = new AbortController();
-  const timer = setTimeout(()=>ctrl.abort(), API_TIMEOUT_MS);
+  const timeoutMs = path.startsWith("/api/search/variants?") ? 30000 : API_TIMEOUT_MS;
+  const timer = setTimeout(()=>ctrl.abort(), timeoutMs);
   let res, text;
   try{
     res = await fetch(base+path, {method:"GET", headers:{Accept:"application/json"}, signal:ctrl.signal});
@@ -578,14 +579,15 @@ async function apiTry(base, path){
   catch(e){ return {ok:false, reason:"down"}; }
   if(res.status===404 && data && data.error==="not found") return {ok:false, reason:"notfound"};
   if(!res.ok) return {ok:false, reason:"down"};
-  return {ok:true, data};
+  return {ok:true, data,
+    semanticUnavailable:res.headers.get("X-Hebrew-Semantic-Search")==="unavailable"};
 }
 async function apiGet(path){
-  if(apiMemo.has(path)) return {ok:true, data:apiMemo.get(path)};
+  if(apiMemo.has(path)) return apiMemo.get(path);
   if(Date.now() < (apiDownUntil.get(path) || 0)) return {ok:false, reason:"down"};
   const r = await apiTry(API_BASE, path);
   if(r.ok){
-    apiMemo.set(path, r.data);
+    apiMemo.set(path, r);
     return r;
   }
   if(r.reason==="notfound") return r;   // the API's own answer; authoritative
@@ -597,7 +599,8 @@ async function apiGet(path){
    nothing for this request. Nothing is invented beyond the sample. */
 async function fromApi(path, fallback){
   const r = await apiGet(path);
-  if(r.ok) return {data:r.data, sample:false};
+  if(r.ok) return {data:r.data, sample:false,
+    semanticUnavailable:!!r.semanticUnavailable};
   if(r.reason==="notfound") return {data:null, sample:false, notFound:true};
   const s = fallback ? fallback() : null;
   if(s==null) return {data:null, sample:true, unavailable:true};
@@ -1556,7 +1559,10 @@ async function viewSearch(q){
       <div class="txt">${esc(x.snippet ?? x.text ?? "")}</div>
       <div class="score">${x.score!=null ? `similarity ${Number(x.score).toFixed(2)}` : ""}${searchResultLabel(x, mode) ? " · " + esc(searchResultLabel(x, mode)) : ""}</div></div>`;
   }).join("") + `</div>`;
-  return {sample:r.sample, nav:"", html: head + bannerFor(r.sample) + body};
+  const semanticWarning = r.semanticUnavailable
+    ? `<p class="banner" role="status">Exact spelling matches are shown; semantic similarity results are temporarily unavailable.</p>`
+    : "";
+  return {sample:r.sample, nav:"", html: head + bannerFor(r.sample) + semanticWarning + body};
 }
 
 /* ============ ROUTER + EVENTS ============ */
