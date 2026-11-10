@@ -68,8 +68,20 @@ The PWA reads Bible data through the configured corpus API base. Main endpoints 
 - `/api/word/<Strong's>`
 - `/api/word-options?wordIds=<comma-separated IDs>`
 - `/api/search?q=<text>`
+- `/api/search/variants?q=<Hebrew spelling>`
 
 The word-options endpoint accepts 1–100 Hebrew word IDs and returns the lemma key plus KJV and Young's phrase groups. It is read-only and explicitly non-cacheable because the phrase ordering defines persisted choice bytes.
+
+### Search modes
+
+The Search page offers two separate retrieval paths:
+
+- **Passage meaning** calls `/api/search` and ranks YLT verse text against the existing 31,102 verse embeddings (768-dimensional `nomic-embed-text` vectors).
+- **Hebrew spelling** calls `/api/search/variants` and searches the 528,565 reconstructed spelling-variant embeddings. The index is keyed to `(word_id, variant_seq)`, uses the `letters` field (falling back to unpointed/variant text, and to the pointed word for 14 empty-field paseq rows), and retains the source/witness metadata from the corpus.
+
+The variant endpoint accepts Hebrew-script queries, removes Hebrew combining marks before embedding, puts exact spelling matches first, then adds vector-nearest spellings. Its vectors use `nomic-embed-text:latest`, 768 dimensions. Similarity is model proximity, not proof that two forms are lexically or morphologically equivalent. The endpoint is `Cache-Control: no-store`; Hebrew spelling search does not use the offline Genesis sample.
+
+The variant index is a separate read-only search database. The Flask service must be configured with the server-side `BIBLE_VARIANT_SEARCH_DATABASE_URL`; do not put its connection string in the PWA or repository. The existing verse index and `/api/search` behavior remain independent.
 
 ## Fallback and offline behavior
 
