@@ -45,9 +45,9 @@ function isJson(res) {
   return res.ok && type.includes("json") && !/\bno-store\b/i.test(cacheControl);
 }
 
-function isPrivateApiRequest(req, url) {
-  // Session/CSRF bootstrap and all bearer-authenticated API responses must
-  // never enter the shared service-worker cache.
+function isNetworkOnlyApiRequest(req, url) {
+  // Private or explicitly no-store API responses must never be served from
+  // or inserted into the shared service-worker cache.
   return url.pathname.includes("/api/auth/") ||
     url.pathname.includes("/api/bible/") ||
     // Choice-byte indices must be built from the current phrase ordering.
@@ -86,7 +86,7 @@ self.addEventListener("fetch", (event) => {
   const scopeRoot = self.registration.scope;
 
   if (isApi(url)) {
-    if (isPrivateApiRequest(req, url)) {
+    if (isNetworkOnlyApiRequest(req, url)) {
       event.respondWith(fetch(req, { cache: "no-store" }));
       return;
     }
