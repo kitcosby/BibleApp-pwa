@@ -17,7 +17,7 @@ The app shell works offline. Bible text and word data already viewed may be avai
 - `index.html` — application views, rendering logic, and client-side state
 - `config.js` — non-secret deployment configuration for corpus, authentication, and authoring API origins
 - `manifest.webmanifest` — installable app metadata and icons
-- `sw.js` — shell and public-corpus caching; authentication, bearer-authenticated authoring, and indexed word-option requests bypass shared caches
+- `sw.js` — shell and public-corpus caching; authentication, bearer-authenticated authoring, indexed word-option requests, and query-specific Hebrew variant search bypass shared caches
 - `icon-180.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png` — app icons
 
 ## Service architecture
