@@ -1634,13 +1634,17 @@ document.addEventListener("click", e=>{
     } else render();
   }
 });
+function handleSearchModeChange(mode, query){
+  if(query !== null && query !== undefined) lastQuery = query;
+  lastSearchMode = mode === "hebrew" ? "hebrew" : "passages";
+  return render();
+}
 document.addEventListener("change", async e=>{
   const t=e.target;
   if(t.matches("[data-act='search-mode']")){
     const queryInput = t.form && t.form.querySelector("input[name='q']");
-    if(queryInput) lastQuery = queryInput.value;
-    lastSearchMode = t.value === "hebrew" ? "hebrew" : "passages";
-    render(); return;
+    handleSearchModeChange(t.value, queryInput ? queryInput.value : null);
+    return;
   }
   if(t.matches("[data-act='translation-select']")){
     try{await setActiveTranslation(t.value?Number(t.value):null);}
