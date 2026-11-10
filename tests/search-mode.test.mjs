@@ -25,6 +25,12 @@ test("Hebrew spelling uses the separate variant embedding endpoint", () => {
   );
 });
 
+test("Hebrew mode rejects non-Hebrew input before making a request", () => {
+  assert.equal(context.isHebrewSearchQuery("בראשית"), true);
+  assert.equal(context.isHebrewSearchQuery("בְּרֵאשִׁית"), true);
+  assert.equal(context.isHebrewSearchQuery("creation"), false);
+});
+
 test("exact Hebrew spelling results are distinguished from embedding neighbors", () => {
   assert.equal(context.searchResultLabel({ match_type: "exact" }, "hebrew"), "exact spelling");
   assert.equal(
