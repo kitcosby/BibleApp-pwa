@@ -6,7 +6,7 @@
 // - Cache-Control: no-store responses are never cached.
 // - Everything else: network-first, with cache fallback.
 // Paths are resolved against the worker's scope, so the app works from any subpath.
-const CACHE = "byot-v19";
+const CACHE = "byot-v20";
 const API_CACHE = "byot-api-v3";
 const KEEP = [CACHE, API_CACHE];
 const SHELL = [
@@ -52,6 +52,8 @@ function isPrivateApiRequest(req, url) {
     url.pathname.includes("/api/bible/") ||
     // Choice-byte indices must be built from the current phrase ordering.
     url.pathname.includes("/api/word-options") ||
+    // Vector search responses are query-specific and explicitly no-store.
+    url.pathname.includes("/api/search/variants") ||
     req.headers.has("authorization");
 }
 
