@@ -126,6 +126,12 @@ test("indexed word-option GET bypasses shared cache to preserve choice-byte orde
   assert.equal(cache.state.puts, 0);
 });
 
+
+test("current service-worker shell version retains the Hebrew variant network-only rule", () => {
+  assert.match(workerSource, /const CACHE = "byot-v20";/);
+  assert.match(workerSource, /url\.pathname\.includes\("\/api\/search\/variants"\)/);
+});
+
 test("Hebrew variant search bypasses shared cache because results are query-specific and no-store", async () => {
   const cache = makeCache();
   let init;
