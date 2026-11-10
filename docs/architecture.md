@@ -210,8 +210,8 @@ flowchart LR
 
 ### Cache and offline boundaries
 
-- Shell cache is `byot-v19`; public API cache is `byot-api-v3`.
-- Flask auth/session routes, Express `/api/bible/*` routes, requests carrying an Authorization header, and Flask `/api/word-options` bypass shared service-worker API caching.
+- Shell cache is `byot-v20`; public API cache is `byot-api-v3`.
+- Flask auth/session routes, Express `/api/bible/*` routes, requests carrying an Authorization header, Flask `/api/word-options`, and Flask `/api/search/variants` bypass shared service-worker API caching.
 - The word-options response is `Cache-Control: no-store`. This is correctness-critical: the stored choice byte is an index into the ordered phrase options, so stale cached phrase data could map a selection to a different rendering.
 - Public read-only corpus data retains the existing offline/cache behavior. Account login, translation synchronization, and private authoring require connectivity.
 - The PWA does not silently fall back to Lampy when a separately configured corpus API is unavailable.
