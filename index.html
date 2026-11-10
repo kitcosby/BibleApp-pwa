@@ -964,7 +964,12 @@ function searchResultLabel(result, mode){
   return result.source === "ylt-computed" ? "Young's (computed) text"
     : result.source === "sample" ? "offline sample (King James)" : "";
 }
+function isHebrewSearchQuery(q){
+  return /[\\u05D0-\\u05EA\\u05F0-\\u05F4]/.test(q || "");
+}
 async function search(q, mode = "passages"){
+  if(mode === "hebrew" && !isHebrewSearchQuery(q))
+    return {data:[],sample:false,error:"Enter a Hebrew-script word or spelling."};
   const r = await fromApi(searchApiPath(q, mode),
     ()=> mode === "passages" && /light/i.test(q) ? sampleSearch(q) : null);
   if(r.data && !r.sample) r.data = Array.isArray(r.data) ? r.data : arr(r.data.results);
@@ -1522,7 +1527,8 @@ async function viewSearch(q){
   if(!q) return {sample:false, nav:"", html: head};
   const r = await search(q, mode);
   let body;
-  if(r.unavailable) body = errorBlock(mode === "hebrew"
+  if(r.error) body = errorBlock(r.error);
+  else if(r.unavailable) body = errorBlock(mode === "hebrew"
     ? "Hebrew spelling search is unavailable right now."
     : "Passage search needs the Bible database and embedding service.");
   else if(!r.data.length) body = `<p class="note" style="text-align:center;margin-top:1.4rem">${r.sample
@@ -1625,6 +1631,8 @@ document.addEventListener("click", e=>{
 document.addEventListener("change", async e=>{
   const t=e.target;
   if(t.matches("[data-act='search-mode']")){
+    const queryInput = t.form && t.form.querySelector("input[name='q']");
+    if(queryInput) lastQuery = queryInput.value;
     lastSearchMode = t.value === "hebrew" ? "hebrew" : "passages";
     render(); return;
   }
