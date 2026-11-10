@@ -1515,7 +1515,10 @@ async function viewSearch(q){
       </select>
       <input type="text" name="q" placeholder="${placeholder}" value="${q?esc(q):""}">
       <button type="submit">Search</button>
-    </form></div>`;
+    </form>
+    <p class="note">${mode==="hebrew"
+      ? "Searches Hebrew spelling variants; similarity is model proximity, not proof of textual equivalence."
+      : "Searches YLT passages by semantic similarity."}</p></div>`;
   if(!q) return {sample:false, nav:"", html: head};
   const r = await search(q, mode);
   let body;
@@ -1531,7 +1534,7 @@ async function viewSearch(q){
       : esc(x.ref);
     const details = [
       x.pointed ? `base ${x.pointed}` : "",
-      x.strongs || "",
+      x.strongs ? `Strong's ${x.strongs}` : "",
       x.variant_source ? `source ${x.variant_source}` : "",
       x.witness ? `witness ${x.witness}` : ""
     ].filter(Boolean).join(" · ");
