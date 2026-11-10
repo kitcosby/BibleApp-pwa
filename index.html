@@ -948,8 +948,23 @@ async function getWordPage(s){
   }
   return r;
 }
-async function search(q){
-  const r = await fromApi(`/api/search?q=${encodeURIComponent(q)}`, ()=> /light/i.test(q) ? sampleSearch(q) : null);
+function searchApiPath(q, mode){
+  const endpoint = mode === "hebrew" ? "/api/search/variants" : "/api/search";
+  return endpoint + "?q=" + encodeURIComponent(q);
+}
+function searchResultLabel(result, mode){
+  if(mode === "hebrew"){
+    if(result.match_type === "exact") return "exact spelling";
+    return result.score != null
+      ? `embedding similarity ${Number(result.score).toFixed(2)}`
+      : "Hebrew variant embedding";
+  }
+  return result.source === "ylt-computed" ? "Young's (computed) text"
+    : result.source === "sample" ? "offline sample (King James)" : "";
+}
+async function search(q, mode = "passages"){
+  const r = await fromApi(searchApiPath(q, mode),
+    ()=> mode === "passages" && /light/i.test(q) ? sampleSearch(q) : null);
   if(r.data && !r.sample) r.data = Array.isArray(r.data) ? r.data : arr(r.data.results);
   return r;
 }
@@ -960,6 +975,7 @@ const navState = { verses: [] };     // verse numbers of the chapter on screen
 const verseCache = new Map();        // "v<n>" -> verse shown in Study
 const ctlWords = new Map();          // Strong's -> word for the controls on screen
 let lastQuery = null;
+let lastSearchMode = "passages";
 let pendingScroll = null;
 function navTo(hash, scrollId){
   pendingScroll = scrollId||null;
@@ -1484,28 +1500,50 @@ function viewAbout(){
   </section>`};
 }
 async function viewSearch(q){
+  const mode = lastSearchMode === "hebrew" ? "hebrew" : "passages";
+  const placeholder = mode === "hebrew"
+    ? "Enter a Hebrew spelling — e.g. בראשית"
+    : "Search by meaning — e.g. light in the darkness";
   const head = `<div style="text-align:center;padding-top:2rem">
-    <h1>Search the verses</h1>
+    <h1>Search the Bible</h1>
     <form class="searchbar" data-form="search">
-      <input type="text" name="q" placeholder="Search by meaning…" value="${q?esc(q):""}">
+      <select name="mode" data-act="search-mode" aria-label="Search type">
+        <option value="passages" ${mode==="passages"?"selected":""}>Passage meaning</option>
+        <option value="hebrew" ${mode==="hebrew"?"selected":""}>Hebrew spelling</option>
+      </select>
+      <input type="text" name="q" placeholder="${placeholder}" value="${q?esc(q):""}">
       <button type="submit">Search</button>
     </form></div>`;
   if(!q) return {sample:false, nav:"", html: head};
-  const r = await search(q);
+  const r = await search(q, mode);
   let body;
-  if(r.unavailable) body = errorBlock("Search needs the Bible database, which is unreachable right now.");
+  if(r.unavailable) body = errorBlock(mode === "hebrew"
+    ? "Hebrew spelling search is unavailable right now."
+    : "Passage search needs the Bible database and embedding service.");
   else if(!r.data.length) body = `<p class="note" style="text-align:center;margin-top:1.4rem">${r.sample
     ? `No matches in the offline sample (Genesis 1:1–5 only) for “${esc(q)}”.`
-    : `No results for “${esc(q)}”.`}</p>`;
-  else body = `<div class="results">` + r.data.map(x=>{
+    : `No ${mode==="hebrew"?"Hebrew spelling":"passage"} matches for “${esc(q)}”.`}</p>`;
+  else if(mode === "hebrew") body = `<h2>Hebrew spelling matches</h2><div class="results">` + r.data.map(x=>{
     const ref = x.verse!=null && x.book_id!=null
       ? `<a href="#/interlinear" data-b="${x.book_id}" data-c="${x.chapter||1}" data-v="${x.verse}" data-to="study">${esc(x.ref)}</a>`
       : esc(x.ref);
-    const label = x.source==="ylt-computed" ? " · Young's (computed) text"
-      : x.source==="sample" ? " · offline sample (King James)" : "";
+    const details = [
+      x.pointed ? `base ${x.pointed}` : "",
+      x.strongs || "",
+      x.variant_source ? `source ${x.variant_source}` : "",
+      x.witness ? `witness ${x.witness}` : ""
+    ].filter(Boolean).join(" · ");
+    return `<div class="result"><div class="ref">${ref}</div>
+      <div class="txt"><span class="heb" dir="rtl">${esc(x.spelling || "")}</span></div>
+      <div class="score">${esc(searchResultLabel(x, mode))}${details ? " · " + esc(details) : ""}</div></div>`;
+  }).join("") + `</div>`;
+  else body = `<h2>Passage matches</h2><div class="results">` + r.data.map(x=>{
+    const ref = x.verse!=null && x.book_id!=null
+      ? `<a href="#/interlinear" data-b="${x.book_id}" data-c="${x.chapter||1}" data-v="${x.verse}" data-to="study">${esc(x.ref)}</a>`
+      : esc(x.ref);
     return `<div class="result"><div class="ref">${ref}</div>
       <div class="txt">${esc(x.snippet ?? x.text ?? "")}</div>
-      <div class="score">${x.score!=null ? `similarity ${Number(x.score).toFixed(2)}` : ""}${label}</div></div>`;
+      <div class="score">${x.score!=null ? `similarity ${Number(x.score).toFixed(2)}` : ""}${searchResultLabel(x, mode) ? " · " + esc(searchResultLabel(x, mode)) : ""}</div></div>`;
   }).join("") + `</div>`;
   return {sample:r.sample, nav:"", html: head + bannerFor(r.sample) + body};
 }
@@ -1528,8 +1566,12 @@ async function render(){
     else if(h.startsWith("#/account")) out = viewAccount();
     else if(h.startsWith("#/search")){
       let q = lastQuery;
-      try{ const p = sessionStorage.getItem("byotPendingQuery");
-           if(p){ q = p; sessionStorage.removeItem("byotPendingQuery"); lastQuery = p; } }catch(e){}
+      try{
+        const p = sessionStorage.getItem("byotPendingQuery");
+        if(p){ q = p; sessionStorage.removeItem("byotPendingQuery"); lastQuery = p; }
+        const m = sessionStorage.getItem("byotPendingSearchMode");
+        if(m){ lastSearchMode = m; sessionStorage.removeItem("byotPendingSearchMode"); }
+      }catch(e){}
       out = await viewSearch(q);
     }
     else out = await viewHome();
@@ -1577,6 +1619,10 @@ document.addEventListener("click", e=>{
 });
 document.addEventListener("change", async e=>{
   const t=e.target;
+  if(t.matches("[data-act='search-mode']")){
+    lastSearchMode = t.value === "hebrew" ? "hebrew" : "passages";
+    render(); return;
+  }
   if(t.matches("[data-act='translation-select']")){
     try{await setActiveTranslation(t.value?Number(t.value):null);}
     catch(err){authoringState.message=err.message||"Could not select translation.";}
@@ -1670,8 +1716,14 @@ document.addEventListener("submit", async e=>{
   }
   const q = f.querySelector("input[name='q']").value;
   lastQuery = q;
+  const modeField = f.querySelector("select[name='mode']");
+  if(modeField) lastSearchMode = modeField.value === "hebrew" ? "hebrew" : "passages";
   if(f.getAttribute("data-form")==="homesearch"){
-    try{ sessionStorage.setItem("byotPendingQuery", q); }catch(err){}
+    lastSearchMode = "passages";
+    try{
+      sessionStorage.setItem("byotPendingQuery", q);
+      sessionStorage.setItem("byotPendingSearchMode", "passages");
+    }catch(err){}
     navTo("#/search");
   } else {
     render();
