@@ -54,8 +54,8 @@ test("the search view exposes both modes and does not sample-fallback Hebrew que
 
 
 test("Hebrew variant requests have a longer timeout without changing other API timeouts", () => {
-  assert.match(html, /const API_TIMEOUT_MS = 8000;/);
-  assert.match(html, /path\.startsWith\("\\/api\\/search\\/variants\\?"\) \? 30000 : API_TIMEOUT_MS/);
+  assert.ok(html.includes("const API_TIMEOUT_MS = 8000;"));
+  assert.ok(html.includes('path.startsWith("/api/search/variants?") ? 30000 : API_TIMEOUT_MS'));
 });
 
 test("Hebrew exact-only fallback visibly identifies unavailable semantic search", () => {
