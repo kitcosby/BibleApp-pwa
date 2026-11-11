@@ -6,7 +6,7 @@
 // - Cache-Control: no-store responses are never cached.
 // - Everything else: network-first, with cache fallback.
 // Paths are resolved against the worker's scope, so the app works from any subpath.
-const CACHE = "byot-v18";
+const CACHE = "byot-v20";
 const API_CACHE = "byot-api-v3";
 const KEEP = [CACHE, API_CACHE];
 const SHELL = [
@@ -45,11 +45,15 @@ function isJson(res) {
   return res.ok && type.includes("json") && !/\bno-store\b/i.test(cacheControl);
 }
 
-function isPrivateApiRequest(req, url) {
-  // Session/CSRF bootstrap and all bearer-authenticated API responses must
-  // never enter the shared service-worker cache.
+function isNetworkOnlyApiRequest(req, url) {
+  // Private or explicitly no-store API responses must never be served from
+  // or inserted into the shared service-worker cache.
   return url.pathname.includes("/api/auth/") ||
     url.pathname.includes("/api/bible/") ||
+    // Choice-byte indices must be built from the current phrase ordering.
+    url.pathname.includes("/api/word-options") ||
+    // Vector search responses are query-specific and explicitly no-store.
+    url.pathname.includes("/api/search/variants") ||
     req.headers.has("authorization");
 }
 
@@ -82,7 +86,7 @@ self.addEventListener("fetch", (event) => {
   const scopeRoot = self.registration.scope;
 
   if (isApi(url)) {
-    if (isPrivateApiRequest(req, url)) {
+    if (isNetworkOnlyApiRequest(req, url)) {
       event.respondWith(fetch(req, { cache: "no-store" }));
       return;
     }

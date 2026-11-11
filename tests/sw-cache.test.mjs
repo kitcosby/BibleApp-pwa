@@ -107,3 +107,44 @@ test("a previously cached no-store response is deleted rather than served", asyn
   assert.equal(cache.state.deletes, 1);
   assert.equal(cache.state.puts, 0);
 });
+
+
+test("indexed word-option GET bypasses shared cache to preserve choice-byte order", async () => {
+  const cache = makeCache();
+  let init;
+  const handler = makeWorker(async (_req, options) => {
+    init = options;
+    return new Response('{"words":[]}', {
+      headers: { "content-type": "application/json", "cache-control": "no-store" },
+    });
+  }, cache);
+  const response = await dispatch(handler,
+    new Request("https://reader.example/bible/api/word-options?wordIds=10,11"));
+  assert.equal(response.status, 200);
+  assert.equal(init.cache, "no-store");
+  assert.equal(cache.state.matches, 0);
+  assert.equal(cache.state.puts, 0);
+});
+
+
+test("current service-worker shell version retains the Hebrew variant network-only rule", () => {
+  assert.match(workerSource, /const CACHE = "byot-v20";/);
+  assert.match(workerSource, /url\.pathname\.includes\("\/api\/search\/variants"\)/);
+});
+
+test("Hebrew variant search bypasses shared cache because results are query-specific and no-store", async () => {
+  const cache = makeCache();
+  let init;
+  const handler = makeWorker(async (_req, options) => {
+    init = options;
+    return new Response("[]", {
+      headers: { "content-type": "application/json", "cache-control": "no-store" },
+    });
+  }, cache);
+  const response = await dispatch(handler,
+    new Request("https://reader.example/bible/api/search/variants?q=בראשית"));
+  assert.equal(response.status, 200);
+  assert.equal(init.cache, "no-store");
+  assert.equal(cache.state.matches, 0);
+  assert.equal(cache.state.puts, 0);
+});

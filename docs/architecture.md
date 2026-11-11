@@ -167,3 +167,72 @@ The client now calls exactly one configured API base. The hard-coded Lampy Funne
 The service worker shell cache is now `byot-v17` and includes `config.js`. It fetches `config.js` network-first, updating the cached configuration when online and using the last cached configuration offline. This allows API-origin changes to take effect without pinning installed clients to an old config file. No secrets belong in `config.js`.
 
 This is a client-side portability prerequisite only. It does not move the Flask API, corpus database, lexical data, or embedding runtime off Lampy. Cross-origin deployment still requires a deliberately configured API CORS policy and an available core API at the configured address.
+
+
+## Current architecture — 2026-11-09 account-backed authoring
+
+This section is the current architecture snapshot. Where earlier diagrams or grounding notes describe a localStorage-only client, a single API, hard-coded API probes, or older cache names, this section supersedes them.
+
+The PWA remains a static client with no application server of its own, but the complete online workflow now spans three independently configurable service bases:
+
+- **Corpus and account service:** Flask in `bible-project`. It serves public read-only Bible/corpus data, the existing Flask `user_accounts` login authority, JSON auth endpoints, and the non-cacheable word-ID phrase-order endpoint.
+- **Authoring service:** Express in `BibleApp`. It verifies short-lived Flask-issued identity tokens and enforces translation ownership for metadata, choices, Other options, and lemma defaults.
+- **Static client:** `BibleApp-pwa`. It hosts the app shell and service worker and calls each backend using a separate configured base URL.
+
+```mermaid
+flowchart LR
+  U["Reader / installed PWA"]
+  S["Static host"]
+  F["Flask: corpus + existing accounts"]
+  E["Express: private authoring API"]
+  DB1[("bible corpus")]
+  DB2[("bible_app authoring")]
+  U -->|"index.html, config.js, sw.js"| S
+  S --> U
+  U -->|"public GET corpus data"| F
+  F --> DB1
+  U -->|"credentialed bootstrap / login / signup / logout + CSRF"| F
+  F -->|"session cookie; five-minute signed identity token"| U
+  U -->|"Bearer token: translations / choices / options"| E
+  E -->|"verify issuer, audience, signature, expiry, account subject"| E
+  E --> DB2
+```
+
+### Authentication and authoring flow
+
+1. The PWA obtains a pre-authentication CSRF token from Flask `GET /api/auth/bootstrap` using credentialed, no-store requests.
+2. Login/signup/logout are JSON POSTs to Flask with the session cookie, exact allowed Origin, and `X-CSRF-Token`. The existing Flask account table and Werkzeug hashes remain authoritative. Successful account-state transitions rotate the session and CSRF token.
+3. The PWA exchanges the authenticated Flask session for a five-minute HS256 token through `POST /api/auth/token`. The token is held only in JavaScript memory; passwords, CSRF tokens, and bearer tokens are not persisted in Web Storage.
+4. Express verifies the token and uses only its verified account subject as the owner. The browser does not submit an owner ID.
+5. Translation reads and writes are owner-scoped. Built-in KJV (ID 1) and Young's (ID 2) are public/read-only. New translations receive the authenticated owner server-side.
+6. The PWA loads explicit Hebrew word-choice bytes and forward-only lemma defaults. It reconstructs the legacy option order from live Flask phrase data: current occurrence phrase first, then remaining KJV phrases, Young's phrases, and translation-specific Other options.
+7. The PWA applies server-backed Hebrew renderings in Study and Read. Existing browser-local choices are preserved and are not automatically imported. Greek authoring is not yet supported.
+
+### Cache and offline boundaries
+
+- Shell cache is `byot-v20`; public API cache is `byot-api-v3`.
+- Flask auth/session routes, Express `/api/bible/*` routes, requests carrying an Authorization header, Flask `/api/word-options`, and Flask `/api/search/variants` bypass shared service-worker API caching.
+- The word-options response is `Cache-Control: no-store`. This is correctness-critical: the stored choice byte is an index into the ordered phrase options, so stale cached phrase data could map a selection to a different rendering.
+- Public read-only corpus data retains the existing offline/cache behavior. Account login, translation synchronization, and private authoring require connectivity.
+- The PWA does not silently fall back to Lampy when a separately configured corpus API is unavailable.
+
+### Deployment boundaries and outstanding work
+
+The three origins are configured independently through `BIBLEAPP_API_BASE`, `BIBLEAPP_AUTH_BASE`, and `BIBLEAPP_AUTHORING_API_BASE` in `config.js`. Cross-origin Flask auth requires the exact frontend origin in `BIBLEAPP_ALLOWED_ORIGINS`; cross-site cookies require Secure + SameSite=None and may still be affected by browser third-party-cookie restrictions. Flask and Express must share a dedicated server-side `BIBLEAPP_IDENTITY_TOKEN_SECRET`; it is separate from the Flask session secret and sandbox token.
+
+This implementation is staged in draft PRs and has not been activated on Lampy. Production secret provisioning, service restarts, and database changes remain separate authorized deployment steps. Before production, complete browser end-to-end tests against configured staging services, cross-user ownership tests, logout/token-expiry checks, and an explicit strategy for migrating existing localStorage choices. Persistent login throttling, account recovery/email verification, immediate bearer-token revocation, and Greek word-choice persistence remain open.
+
+## Search augmentation — 2026-11-09
+
+The Search view now exposes two deliberately separate search modes:
+
+- **Passage meaning:** the existing Flask `GET /api/search?q=...` route embeds the query with local Ollama `nomic-embed-text` and searches 31,102 YLT verse embeddings in `bible.ylt_verses_embedding_store`. This path is unchanged.
+- **Hebrew spelling:** the new Flask `GET /api/search/variants?q=...` route searches 528,565 reconstructed spelling-variant embeddings, keyed by `(word_id, variant_seq)`. The embedding metadata records `nomic-embed-text:latest`, 768 dimensions, and `variant_kind='spelling'` scope.
+
+The recovered SQLite embedding set was checked against the staging corpus: 528,565 source spelling keys and 528,565 embedding keys, with no missing or extra keys. Each source blob is 3,072 bytes (768 float32 values). The recorded input is `letters`, falling back to `unpointed` and `variant_text`; 14 empty-field paseq rows were topped up from the corresponding pointed word form. These fallback rows do not currently qualify as normalized exact matches; they remain in the vector corpus and may be surfaced by semantic-neighbor retrieval. This is a reconstructed dataset, not a claim that the lost original run was reproduced bit-for-bit.
+
+The variant index is installed in a separate staging search database and queried read-only by Flask through the server-side `BIBLE_VARIANT_SEARCH_DATABASE_URL`. It uses pgvector cosine distance with an IVFFlat index. Exact spelling matches are returned before vector-nearest spellings. Hebrew combining marks are stripped from query input to align it with the unpointed indexed strings. The endpoint rejects non-Hebrew queries and returns `Cache-Control: no-store` on success and error responses. Exact SQL matches are evaluated before Ollama, so exact results remain available during an embedding-service outage; the response marks missing semantic expansion with `X-Hebrew-Semantic-Search: unavailable`. The PWA allows 45 seconds for this endpoint's cold-start latency while retaining the existing 8-second timeout for other API calls.
+
+The two indexes answer different questions. Verse embeddings retrieve passages by meaning; spelling-variant embeddings retrieve Hebrew word forms by model proximity. A high vector similarity is not proof of lexical identity, shared morphology, or textual equivalence. Search results preserve the underlying variant source and witness metadata so users can inspect the evidence.
+
+This work is staged only. Production Flask configuration, production database/index creation, and production deployment remain separate steps. The existing verse search route and verse index are not replaced or migrated.
