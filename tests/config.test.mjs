@@ -11,10 +11,10 @@ function configure(initial = {}) {
   return window;
 }
 
-test("same-origin defaults preserve the Lampy mount contract", () => {
+test("production defaults target the public core API and derive auth from it", () => {
   const config = configure();
-  assert.equal(config.BIBLEAPP_API_BASE, "/bible");
-  assert.equal(config.BIBLEAPP_AUTH_BASE, "/bible");
+  assert.equal(config.BIBLEAPP_API_BASE, "https://laptop.taila7a335.ts.net:8443/bible");
+  assert.equal(config.BIBLEAPP_AUTH_BASE, "https://laptop.taila7a335.ts.net:8443/bible");
   assert.equal(config.BIBLEAPP_AUTHORING_API_BASE, "/api");
 });
 
