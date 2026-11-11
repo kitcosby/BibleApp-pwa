@@ -562,6 +562,7 @@ const API_TIMEOUT_MS = 8000;
 const API_COOLDOWN_MS = 30000;
 const apiDownUntil = new Map();   // path -> time when it may be tried again
 const apiMemo = new Map();
+let liveDataConfirmed = false;    // latest data outcome: has the API actually answered?
 // API base is deployment configuration, not a probe/fallback list.
 async function apiTry(base, path){
   const ctrl = new AbortController();
@@ -587,10 +588,12 @@ async function apiGet(path){
   if(Date.now() < (apiDownUntil.get(path) || 0)) return {ok:false, reason:"down"};
   const r = await apiTry(API_BASE, path);
   if(r.ok){
+    liveDataConfirmed = true;
     apiMemo.set(path, r);
     return r;
   }
-  if(r.reason==="notfound") return r;   // the API's own answer; authoritative
+  if(r.reason==="notfound"){ liveDataConfirmed = true; return r; }   // the API's own answer; authoritative
+  liveDataConfirmed = false;
   apiDownUntil.set(path, Date.now()+API_COOLDOWN_MS);
   return {ok:false, reason:"down"};
 }
@@ -1001,16 +1004,21 @@ function applyScroll(){
 const SAMPLE_NOTE = "Showing built-in sample data: the Bible database is unreachable, so this shows only the Genesis 1:1–5 sample where it applies. Nothing here is made up.";
 function bannerFor(sample){ return sample ? `<div class="banner" role="status">${SAMPLE_NOTE}</div>` : ""; }
 /* Footer follows the data state: the fallback explanation only belongs
-   on screen while sample data is actually being shown (Kit's ruling). */
-function footerNote(sample){
-  return sample
-    ? "Showing the built-in sample (Genesis 1:1–5) — the Bible database is unreachable right now. Young's renderings are computed alignments, labeled as such."
-    : "Connected to the Bible database. Young's renderings are computed alignments, labeled as such.";
+   on screen while sample data is actually being shown (Kit's ruling).
+   Three states, honestly labeled (D11): sample being shown; live data
+   confirmed by an actual API answer; and not yet known — a view that
+   has not fetched must not claim a connection. */
+function footerNote(sample, live){
+  if(sample)
+    return "Showing the built-in sample (Genesis 1:1–5) — the Bible database is unreachable right now. Young's renderings are computed alignments, labeled as such.";
+  if(live)
+    return "Connected to the Bible database. Young's renderings are computed alignments, labeled as such.";
+  return "Reads from the Bible database when it is reachable; otherwise a labeled built-in sample (Genesis 1:1–5). Young's renderings are computed alignments, labeled as such.";
 }
 function setFooter(sample){
   if(!document.getElementById) return;
   const f = document.getElementById("appfoot");
-  if(f) f.textContent = footerNote(sample);
+  if(f) f.textContent = footerNote(sample, liveDataConfirmed);
 }
 function errorBlock(msg){
   return `<div class="state err"><p>${esc(msg)}</p>

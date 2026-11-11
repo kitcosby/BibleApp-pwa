@@ -148,8 +148,18 @@ test("switching search modes preserves the typed query and re-renders the select
   ]);
 });
 
-test("KNOWN-ISSUE D11: initial non-sample footer reports database connected before data status is known", { todo:"D11 is documented behavior awaiting a separate footer-state fix; do not treat as passing UX." }, () => {
+test("D11 fixed: footer claims a connection only after live data is confirmed", () => {
   const context = {};
   runInNewContext(html.slice(footerStart, footerEnd), context);
-  assert.equal(context.footerNote(false), "Connected to the Bible database. Young's renderings are computed alignments, labeled as such.");
+  // Not yet known: no connection claim.
+  const initial = context.footerNote(false, false);
+  assert.ok(!initial.includes("Connected to the Bible database"),
+    "initial footer must not claim a connection before any request has run");
+  assert.equal(initial, "Reads from the Bible database when it is reachable; otherwise a labeled built-in sample (Genesis 1:1–5). Young's renderings are computed alignments, labeled as such.");
+  // Live data confirmed by an actual API answer: the claim is earned.
+  assert.equal(context.footerNote(false, true), "Connected to the Bible database. Young's renderings are computed alignments, labeled as such.");
+  // Sample state dominates, whatever the live flag says.
+  const sampleNote = "Showing the built-in sample (Genesis 1:1–5) — the Bible database is unreachable right now. Young's renderings are computed alignments, labeled as such.";
+  assert.equal(context.footerNote(true, false), sampleNote);
+  assert.equal(context.footerNote(true, true), sampleNote);
 });
