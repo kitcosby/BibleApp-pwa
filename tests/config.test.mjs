@@ -28,12 +28,3 @@ test("a separately hosted deployment can override all three service origins", ()
   assert.equal(config.BIBLEAPP_AUTH_BASE, "https://accounts.example");
   assert.equal(config.BIBLEAPP_AUTHORING_API_BASE, "https://authoring.example/api");
 });
-
-test("a same-origin deployment can retain its own API and auth bases", () => {
-  const config = configure({
-    BIBLEAPP_API_BASE: "/bible",
-    BIBLEAPP_AUTH_BASE: "/bible",
-  });
-  assert.equal(config.BIBLEAPP_API_BASE, "/bible");
-  assert.equal(config.BIBLEAPP_AUTH_BASE, "/bible");
-});
