@@ -1,6 +1,13 @@
 # BibleApp — Build Your Own Translation
 
-A Hebrew Bible study and reading app delivered as a static, installable progressive web app. The client can be hosted independently of the Bible corpus and authoring services.
+BibleApp is a Hebrew and Greek Bible study, reading, and translation-authoring progressive web app (PWA). It combines a 66-book Bible reader with word-level rendering choices, Hebrew spelling-variant search, semantic passage search, lexicon and morphology data, and account-backed translation editing. It is designed for desktop and mobile browsers and can be installed on iPhone and Android.
+
+**Live app:** https://bibleapp-pwa.vercel.app/  
+**Source code:** https://github.com/kitcosby/BibleApp-pwa
+
+Search terms: Bible study app, Bible reader, Hebrew Bible, Greek New Testament, Hebrew spelling search, biblical text search, Bible translation tool, build your own Bible translation, Young's Literal Translation (YLT), KJV, progressive web app.
+
+The static client can be hosted independently of the Bible corpus and authoring services.
 
 ## Install on your phone
 
@@ -32,19 +39,23 @@ The forum/comment integration remains a separate Lampy-specific service and is n
 
 ## Deployment configuration
 
-Set the following non-secret values in `config.js` (or define the corresponding `window.BIBLEAPP_*` values before it loads). Use HTTPS origins for cross-origin deployments and omit trailing slashes.
+The current Vercel production client uses the public Tailscale Funnel URL as its corpus API default:
 
-- `window.BIBLEAPP_API_BASE` — corpus API base; default `/bible`
-- `window.BIBLEAPP_AUTH_BASE` — Flask account service base; defaults to the corpus API base
-- `window.BIBLEAPP_AUTHORING_API_BASE` — Express API base; default `/api`
+- `window.BIBLEAPP_API_BASE` — `https://laptop.taila7a335.ts.net:8443/bible` by default
+- `window.BIBLEAPP_AUTH_BASE` — defaults to the configured corpus API base; can be overridden independently
+- `window.BIBLEAPP_AUTHORING_API_BASE` — `/api` by default; configure independently when the Express authoring service is available to the deployment
 
-With the Lampy Apache mounts, the defaults resolve to Flask at `/bible/api/...` and Express at `/api/bible/...`. For a separately hosted PWA, set the origins independently; do not assume the Flask and Express services share a host.
+All three values can be overridden before `config.js` loads. Use HTTPS for cross-origin deployments and omit trailing slashes. The configuration contains public service URLs only; never put credentials, database URLs, signing keys, session secrets, or sandbox tokens in the PWA.
 
-For cross-origin account requests, configure the exact PWA origin in Flask's `BIBLEAPP_ALLOWED_ORIGINS`. The browser must use credentialed requests for Flask authentication. If the frontend and Flask are cross-site, the Flask session cookie requires `BIBLEAPP_COOKIE_SAMESITE=None` and `BIBLEAPP_COOKIE_SECURE=1`; browser third-party-cookie restrictions may still interfere, so same-site hosting is preferable.
+For a same-origin Lampy deployment, explicitly set `window.BIBLEAPP_API_BASE = "/bible"` before `config.js` loads. Do not assume the Vercel production default is suitable for every host.
+
+**Browser networking note:** on a device whose Tailscale DNS resolves the Funnel hostname to a tailnet `100.x` address, Chrome may classify the request as local-network access and block it without permission. The public Funnel DNS addresses are reachable through public DNS; browser verification of the Vercel client was successful when public DNS resolution was used. This is a client/network permission issue, not evidence that the corpus API route is missing.
+
+The Flask service must allow the exact PWA origin in `BIBLEAPP_ALLOWED_ORIGINS` for cross-origin account requests. Credentialed Flask authentication requires browser credential support. If the frontend and Flask are cross-site, the Flask session cookie requires `BIBLEAPP_COOKIE_SAMESITE=None` and `BIBLEAPP_COOKIE_SECURE=1`; browser third-party-cookie restrictions may still interfere, so same-site hosting is preferable.
 
 Flask and Express must share the same generated `BIBLEAPP_IDENTITY_TOKEN_SECRET`. Keep it server-side and separate from the Flask session secret and any sandbox token. Configure `BIBLEAPP_SESSION_SECRET` as a stable server-side secret. Never put any of these secrets in `config.js`, the PWA bundle, browser storage, or deployment documentation.
 
-Keep Express private/localhost-only until the shared secret, allowed origins, and full end-to-end ownership tests are configured and verified.
+Keep Express private/localhost-only until the shared secret, allowed origins, and full end-to-end ownership tests are configured and verified. The current `/api` authoring default is not proof that the authoring service is publicly deployed.
 
 ## Account translations and data preservation
 
@@ -62,7 +73,7 @@ The PWA reads Bible data through the configured corpus API base. Main endpoints 
 
 - `/api/books`
 - `/api/chapters/<book>`
-- `/api/verses/<book>/<chapter>`
+- `/api/verses/<book>/<chapter>/<chapter>`
 - `/api/verse/<book>/<chapter>/<verse>`
 - `/api/chapter/<book>/<chapter>`
 - `/api/word/<Strong's>`
