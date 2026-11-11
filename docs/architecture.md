@@ -236,3 +236,29 @@ The variant index is installed in a separate staging search database and queried
 The two indexes answer different questions. Verse embeddings retrieve passages by meaning; spelling-variant embeddings retrieve Hebrew word forms by model proximity. A high vector similarity is not proof of lexical identity, shared morphology, or textual equivalence. Search results preserve the underlying variant source and witness metadata so users can inspect the evidence.
 
 This work is staged only. Production Flask configuration, production database/index creation, and production deployment remain separate steps. The existing verse search route and verse index are not replaced or migrated.
+
+
+## Current production deployment — 2026-11-11
+
+This dated deployment snapshot supersedes older statements above that describe the same-origin `/bible` path as the current default, describe the three-service authoring flow as only staged, or show the older API-base probe list as active behavior. The earlier diagrams and grounding notes are retained as historical design/implementation context; verify current code before using those older operational details.
+
+### Production client and corpus API
+
+- The static PWA is deployed at https://bibleapp-pwa.vercel.app/.
+- The current `main` configuration sets `window.BIBLEAPP_API_BASE` to `https://laptop.taila7a335.ts.net:8443/bible`, while preserving the `window.BIBLEAPP_API_BASE || ...` deployment override.
+- `window.BIBLEAPP_AUTH_BASE` continues to derive from the configured corpus API base unless explicitly overridden.
+- `window.BIBLEAPP_AUTHORING_API_BASE` remains `/api`; this is a separate authoring-service deployment/routing concern and is not made functional by the corpus API-base change.
+- A same-origin Lampy deployment must explicitly override the corpus base to `/bible` before `config.js` loads.
+- The production configuration change was merged by PR #6. Merge commit: `9b9cfa2a5708053ca845aae681235a41dcfb7fee`.
+
+### Verification evidence and caveats
+
+The PWA Node test suite after the production API-base change reported 25 passed, 0 failed, and 1 TODO (D11 at that point). A fresh browser session against the Vercel production app, with service-worker bypass and public DNS resolution for the Funnel hostname, loaded the live corpus successfully: book, chapter, and verse requests returned HTTP 200 and the app displayed all 66 books. The D11 footer assertion was subsequently fixed in PR #7; consult that PR and current test results for its post-fix status.
+
+**Tailscale DNS caveat:** on a browser device connected to Tailscale, the Funnel hostname may resolve through tailnet DNS to a `100.x` address. Chrome can then classify the request as local-network access and block it unless the browser grants the relevant permission. The successful browser verification used a public DNS resolver override. Do not interpret that test as proof that every Tailscale-connected browser profile will permit the request without a permission/DNS adjustment.
+
+**Separate authoring/auth follow-ups:** the core corpus read path and the account/authoring paths are distinct. A probe of `/bible/api/auth/bootstrap` returned HTTP 404 during the deployment check; investigate the deployed Flask auth route and mount separately before claiming account sign-in is production-ready. The authoring API default `/api` likewise remains a separate deployment dependency. Neither issue changes the verified core corpus read result.
+
+### Current ownership boundaries
+
+This PWA repository owns the static client, runtime configuration, service worker, and browser-side tests/documentation. Flask corpus/auth deployment, Express authoring deployment, secrets, database configuration, Tailscale Serve/Funnel routing, and production schema/data changes belong to their respective backend/operations workstreams. Do not infer that a frontend merge deployed or changed those services.
